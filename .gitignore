@@ -1,0 +1,57 @@
+# Hybrid LSTM+RL Trading System
+LSTM + Reinforcement Learning powered AI trading system with real-time news sentiment analysis.
+
+## Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+## Virtual environments
+venv/
+env/
+ENV/
+
+## ML Models (large files)
+ml_service/models/saved_models/*.zip
+ml_service/models/saved_models/ppo_*
+ml_service/models/saved_models/lstm_*.pth
+
+## Data cache
+ml_service/data/cache/
+*.csv
+
+## Environment variables
+.env
+*.env.local
+
+## IDE
+.vscode/
+.idea/
+*.iml
+
+## OS
+.DS_Store
+Thumbs.db
+
+## Java/Spring Boot
+trading_backend/trading_backend/target/
+trading_backend/trading_backend/.mvn/
+trading_backend/trading_backend/HELP.md
+*.class
+*.jar
+*.war
+
+## Logs
+*.log
+logs/
+
+## Database
+*.db
+*.sqlite
+
+## Temporary files
+*.tmp
+*.temp
+current_training_id.txt
