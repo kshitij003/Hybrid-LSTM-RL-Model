@@ -1,0 +1,23 @@
+.card {
+  background-color: var(--surface-light);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+  transition: all 0.3s;
+}
+
+.card:hover {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 15px rgba(0, 102, 204, 0.2);
+}
+
+.card-title {
+  color: var(--secondary-color);
+  margin: 0 0 15px 0;
+  font-size: 1.2em;
+}
+
+.card-content {
+  color: var(--text);
+}
