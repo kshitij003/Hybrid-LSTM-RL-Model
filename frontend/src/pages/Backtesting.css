@@ -1,0 +1,139 @@
+.backtesting {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.backtesting h2 {
+  color: var(--secondary-color);
+  font-size: 2em;
+}
+
+.backtest-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: 20px;
+}
+
+.backtest-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.form-group label {
+  color: var(--text-secondary);
+  margin-bottom: 5px;
+  font-weight: 500;
+}
+
+.form-group input,
+.form-group select {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 10px;
+  border-radius: 6px;
+  font-size: 1em;
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 10px rgba(0, 102, 204, 0.3);
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+}
+
+.message {
+  padding: 10px;
+  border-radius: 6px;
+  border-left: 3px solid var(--danger-color);
+  background-color: rgba(255, 51, 51, 0.1);
+}
+
+.message.success {
+  border-left-color: var(--secondary-color);
+  background-color: rgba(0, 204, 153, 0.1);
+}
+
+.results-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 15px;
+}
+
+.result-box {
+  background-color: var(--surface);
+  padding: 15px;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-left: 3px solid var(--primary-color);
+}
+
+.result-label {
+  color: var(--text-secondary);
+  font-size: 0.85em;
+}
+
+.result-value {
+  font-size: 1.3em;
+  font-weight: bold;
+  color: var(--primary-color);
+}
+
+.result-value.green {
+  color: var(--secondary-color);
+}
+
+.result-value.danger {
+  color: var(--danger-color);
+}
+
+.history-table {
+  overflow-x: auto;
+}
+
+.history-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.history-table th,
+.history-table td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.history-table th {
+  background-color: var(--surface);
+  color: var(--secondary-color);
+  font-weight: 600;
+}
+
+.history-table tr:hover {
+  background-color: var(--surface);
+}
+
+.history-table .positive {
+  color: var(--secondary-color);
+  font-weight: 500;
+}
+
+.no-data {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 20px;
+}
