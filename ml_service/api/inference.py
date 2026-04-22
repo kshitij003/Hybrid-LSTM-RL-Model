@@ -17,7 +17,7 @@ LSTM_HIDDEN_DIM  = 50
 LSTM_NUM_LAYERS  = 2
 LSTM_SEQ_LEN     = 30   # sequence_length used during training
 MODEL_DIR        = "models/saved_models"
-MAX_STOCKS       = 10   # Fixed "slots" for the AI brain to support dynamic tickers
+MAX_STOCKS       = 5    # Matches the number of stocks used during training
 
 # Default Indian Nifty 50 stocks (configurable via DEFAULT_STOCKS env var).
 # Frontend/training pipeline can always pass a custom list — this is just
@@ -56,10 +56,14 @@ def load_active_model() -> bool:
     # ── 1. PPO model ─────────────────────────────────────────────────────────
     try:
         from stable_baselines3 import PPO
-        ppo_path = os.path.join(MODEL_DIR, "ppo_multi_stock")
+        from api.models import get_active_model_id
+        
+        model_id = get_active_model_id() or "ppo_multi_stock"
+        ppo_path = os.path.join(MODEL_DIR, model_id)
+        
         if os.path.exists(ppo_path + ".zip"):
             active_model         = PPO.load(ppo_path)
-            active_model_version = "v1.0.0"
+            active_model_version = model_id
             print(f"✅ Loaded PPO model: {ppo_path}")
         else:
             print(f"⚠️  No PPO model at {ppo_path}")
@@ -303,11 +307,24 @@ def predict():
 
         observation    = prepare_observation(internal_data)
         action, _      = active_model.predict(observation, deterministic=True)
-        weights        = normalize_weights(action)
-
+        
+        # Only take the relevant parts of the action vector
+        # (the indices matching our active tickers + the final cash slot)
+        trained_order = ["HDFCBANK.NS", "ICICIBANK.NS", "INFY.NS", "RELIANCE.NS", "TCS.NS"]
         stock_tickers  = sorted(market_data.keys())
+        
+        active_indices = [i for i, t in enumerate(trained_order) if t in market_data]
+        
+        # Action vector is [stock0, stock1, stock2, stock3, stock4, cash]
+        relevant_actions = np.concatenate([
+            action[active_indices],        # The stocks we actually provided
+            [action[MAX_STOCKS]]           # The cash slot (always at the end)
+        ])
+        
+        weights = normalize_weights(relevant_actions)
+        
         target_weights = {t: float(weights[i]) for i, t in enumerate(stock_tickers)}
-        target_weights['CASH'] = float(weights[len(stock_tickers)])
+        target_weights['CASH'] = float(weights[-1])
 
         confidence     = calculate_confidence(weights, observation)
         total_value    = float(data['currentCash']) + sum(
@@ -488,22 +505,26 @@ def prepare_observation(request_data: dict) -> np.ndarray:
     initial_balance = 10000.0   # Matches training baseline
 
     # ── 1. LSTM latent states (Padded to MAX_STOCKS) ─────────────────────────
+    # We must align tickers with their trained slots:
+    # 0: HDFCBANK, 1: ICICIBANK, 2: INFY, 3: RELIANCE, 4: TCS
+    trained_order = ["HDFCBANK.NS", "ICICIBANK.NS", "INFY.NS", "RELIANCE.NS", "TCS.NS"]
+    
     lstm_parts = []
     for i in range(MAX_STOCKS):
-        if i < num_input_stocks:
-            ticker = input_tickers[i]
+        ticker = trained_order[i]
+        if ticker in market_data:
             state = _compute_lstm_state(ticker, market_data[ticker])
             lstm_parts.append(state)
         else:
-            # Pad with zeros for unused slots
+            # Padded slot for stocks not in the current request
             lstm_parts.append(np.zeros(LSTM_HIDDEN_DIM, dtype=np.float32))
     lstm_states = np.concatenate(lstm_parts).astype(np.float32)
 
-    # ── 2. Normalised current prices (Padded to MAX_STOCKS) ──────────────────
+    # ── 2. Normalised current prices (Aligned with trained_order) ────────────
     normalized_prices_list = []
     for i in range(MAX_STOCKS):
-        if i < num_input_stocks:
-            ticker = input_tickers[i]
+        ticker = trained_order[i]
+        if ticker in market_data:
             rows = market_data[ticker]
             fp = float(rows[0].get('close', 100.0))
             cp = float(rows[-1].get('close', 100.0))
@@ -512,11 +533,11 @@ def prepare_observation(request_data: dict) -> np.ndarray:
             normalized_prices_list.append(0.0)
     normalized_prices = np.array(normalized_prices_list, dtype=np.float32)
 
-    # ── 3. Portfolio weights (Padded: MAX_STOCKS weights + 1 cash) ───────────
+    # ── 3. Portfolio weights (Aligned with trained_order + 1 cash) ───────────
     weights_list = []
     for i in range(MAX_STOCKS):
-        if i < num_input_stocks:
-            ticker = input_tickers[i]
+        ticker = trained_order[i]
+        if ticker in market_data:
             v = float(current_holdings.get(ticker, 0.0))
             weights_list.append(v / total_value if total_value > 0 else 0.0)
         else:

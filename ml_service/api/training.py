@@ -827,8 +827,13 @@ def run_training_job(training_id: str, stocks: list, start_date: str, end_date: 
         
         logger.info(f"[{training_id}] Training job completed successfully!")
         
+        # Set this new model as the active one
+        from api.models import set_active_model_id
+        model_id = os.path.splitext(os.path.basename(save_path))[0]
+        set_active_model_id(model_id)
+        
         # Hot-reload the model into memory so predictions immediately use the new weights
-        logger.info(f"[{training_id}] Hot-reloading new model weights into inference engine...")
+        logger.info(f"[{training_id}] Hot-reloading new model weights ({model_id}) into inference engine...")
         from api.inference import load_active_model
         load_active_model()
         logger.info(f"[{training_id}] Hot-reload complete.")
