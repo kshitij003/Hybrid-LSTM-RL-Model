@@ -1,147 +1,138 @@
 package com.trader.trading_backend.service;
 
 import com.trader.trading_backend.Repository.AI_Model_Governance.ModelSignalRepository;
-import com.trader.trading_backend.Repository.Market_Data_Management.DailyStockSummaryRepository;
-import com.trader.trading_backend.Repository.Market_Data_Management.MarketNewsRepository;
-import com.trader.trading_backend.Repository.Market_Data_Management.StockPriceRepository;
-import com.trader.trading_backend.Repository.Market_Data_Management.StockRepository;
-import com.trader.trading_backend.dto.InferenceRequestDTO;
+import com.trader.trading_backend.Repository.Portfolio_Trading_Engine.PortfolioRepository;
 import com.trader.trading_backend.dto.InferenceResponseDTO;
-import com.trader.trading_backend.dto.StockFeatureDTO;
 import com.trader.trading_backend.entity.AI_Model_Governance.ModelSignal;
-import com.trader.trading_backend.entity.Market_Data_Management.DailyStockSummary;
 import com.trader.trading_backend.entity.Market_Data_Management.Stock;
-import com.trader.trading_backend.entity.Market_Data_Management.StockPrice;
 import com.trader.trading_backend.entity.Portfolio_Trading_Engine.Portfolio;
+import com.trader.trading_backend.Repository.Market_Data_Management.StockRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
-import java.time.LocalDate;
-import java.util.*;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
+/**
+ * ModelIntegrationService — calls the Python ML service for portfolio rebalancing signals.
+ *
+ * Simplified from previous version:
+ *   ❌ Removed: market data fetching from DB (StockPrice, DailyStockSummary, MarketNews)
+ *   ❌ Removed: sentiment lookup from DB
+ *   ✅ Kept   : predict call to ML service (simplified payload — just portfolio state + tickers)
+ *   ✅ Kept   : model decision audit logging (ModelSignal)
+ *
+ * The ML service now handles all data fetching internally via yfinance + NewsAPI/FinBERT.
+ * Spring Boot only needs to send: currentCash, currentHoldings, tickers.
+ */
 @Service
 @RequiredArgsConstructor
 public class ModelIntegrationService {
 
-    private final StockRepository stockRepository;
-    private final MarketNewsRepository marketNewsRepository;
-    private final StockPriceRepository stockPriceRepository;
-    private final DailyStockSummaryRepository dailyStockSummaryRepository;
+    private final StockRepository       stockRepository;
     private final ModelSignalRepository modelSignalRepository;
-
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final RestTemplate          restTemplate = new RestTemplate();
 
     @Value("${ai.service.url:http://localhost:8000}")
-    private String pythonServiceUrl;
+    private String mlServiceUrl;
 
-    // The LSTM needs exactly 60 days of data to look back
-    private static final int SEQUENCE_LENGTH = 60;
+    /**
+     * Get AI portfolio rebalancing weights for a given portfolio.
+     *
+     * Sends a lightweight request to the ML service containing only:
+     *   - current cash balance
+     *   - current holdings (ticker → INR value)
+     *   - list of tickers to consider
+     *
+     * The ML service fetches market data and sentiment internally.
+     *
+     * @param portfolio The active portfolio to rebalance
+     * @return Map of ticker → target weight (0.0 to 1.0), empty on failure
+     */
     @Transactional
     public Map<String, Double> getRebalancingSignals(Portfolio portfolio) {
-        System.out.println("🤖 AI Inference: Preparing payload for Portfolio ID: {}"+ portfolio.getId());
+        System.out.println("🤖 ML Inference: Requesting signals for Portfolio ID: " + portfolio.getId());
 
-        // 1. Build the Payload
-        InferenceRequestDTO payload = buildInferencePayload(portfolio);
-
-        // 2. Call Python API
         try {
+            // Build simplified payload — no market data needed
+            Map<String, Object> payload = buildSimplifiedPayload(portfolio);
+
             ResponseEntity<InferenceResponseDTO> response = restTemplate.postForEntity(
-                    pythonServiceUrl + "/predict",
+                    mlServiceUrl + "/api/predict",
                     payload,
                     InferenceResponseDTO.class
             );
 
             InferenceResponseDTO result = response.getBody();
             if (result == null || result.getTargetWeights() == null) {
-                throw new RuntimeException("Received empty response from AI Model");
+                throw new RuntimeException("Empty response from ML service");
             }
 
-            System.out.println("AI Response received. Confidence: {}"+result.getConfidenceScore());
+            System.out.println("✅ ML Response received. Confidence: " + result.getConfidenceScore());
 
-            // 3. Log the decision for Audit (Explainability)
-            logModelDecisions(portfolio, result);
+            // Audit log — persist model decision for explainability
+            logModelDecision(portfolio, result);
 
             return result.getTargetWeights();
 
         } catch (Exception e) {
-            System.out.println("❌ AI Service Failed: {}"+e.getMessage());
-            // Fallback: Return empty map (Hold current position)
+            System.err.println("❌ ML service call failed: " + e.getMessage());
+            // Fallback: hold current position (return empty weights map)
             return Collections.emptyMap();
         }
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Private helpers
+    // ─────────────────────────────────────────────────────────────────────────
+
     /**
-     * Payload Builder
-     * Merges Price + News + Summary into a single timeline.
+     * Build the simplified predict payload.
+     * ML service fetches OHLCV + sentiment internally — we only send portfolio state.
      */
-    private InferenceRequestDTO buildInferencePayload(Portfolio portfolio) {
-        List<Stock> allStocks = stockRepository.findAll();
-        Map<String, List<StockFeatureDTO>> marketDataMap = new HashMap<>();
+    private Map<String, Object> buildSimplifiedPayload(Portfolio portfolio) {
 
-        for (Stock stock : allStocks) {
-            // A. Fetch last 60 days of prices
-            List<StockPrice> prices = stockPriceRepository.findByStockIdOrderByTimestampDesc(stock.getId(), PageRequest.of(0, SEQUENCE_LENGTH));
-
-            // Reverse to Chronological Order (Day 1 -> Day 60) for LSTM
-            Collections.reverse(prices);
-
-            List<StockFeatureDTO> features = new ArrayList<>();
-
-            for (StockPrice price : prices) {
-                LocalDate date = price.getTimestamp().toLocalDate();
-
-                // B. Fetch Sentiment for this specific day
-                // Logic: Try finding a Summary first (Old data), if null, check raw News (Recent data)
-                Double sentiment = getSentimentForDate(stock.getId(), date);
-
-                features.add(StockFeatureDTO.builder()
-                        .date(date.toString())
-                        .close(price.getClosePrice().doubleValue())
-                        .volume(price.getVolume().doubleValue())
-                        .sentimentScore(sentiment)
-                        .build());
-            }
-            marketDataMap.put(stock.getTicker(), features);
-        }
-
-        // C. Build Portfolio State map
+        // Current holdings: ticker → approximate INR value of position
         Map<String, Double> holdingsMap = portfolio.getHoldings().stream()
                 .collect(Collectors.toMap(
                         h -> h.getStock().getTicker(),
-                        h -> h.getQuantity().doubleValue() * h.getStock().getPriceHistory().get(0).getClosePrice().doubleValue() // Approx value
+                        h -> h.getQuantity().doubleValue()
+                             * h.getCurrentPrice().doubleValue()
                 ));
 
-        return InferenceRequestDTO.builder()
-                .currentCash(portfolio.getCurrentCashBalance())
-                .currentHoldings(holdingsMap)
-                .marketData(marketDataMap)
-                .build();
-    }
+        // Tickers to run inference on (all stocks in portfolio)
+        List<String> tickers = portfolio.getHoldings().stream()
+                .map(h -> h.getStock().getTicker())
+                .collect(Collectors.toList());
 
-    // Helper: Smart Sentiment Lookup
-    protected Double getSentimentForDate(Long stockId, LocalDate date) {
-        // 1. Check Summary Table (Fast)
-        Optional<DailyStockSummary> summary = dailyStockSummaryRepository.findByStockIdAndDate(stockId, date);
-        if (summary.isPresent()) {
-            return summary.get().getAverageSentimentScore();
+        // If portfolio has no holdings yet, use all registered stocks
+        if (tickers.isEmpty()) {
+            tickers = stockRepository.findAll().stream()
+                    .map(Stock::getTicker)
+                    .collect(Collectors.toList());
         }
 
-        return marketNewsRepository.findAverageSentimentByStockIdAndPublishedAt(stockId, date); // Default to Neutral
+        return Map.of(
+                "currentCash",     portfolio.getCurrentCashBalance(),
+                "currentHoldings", holdingsMap,
+                "tickers",         tickers
+        );
     }
 
-    // Helper: Audit Logger
-    private void logModelDecisions(Portfolio portfolio, InferenceResponseDTO result) {
+    /**
+     * Persist each model weight decision as a ModelSignal for audit / explainability.
+     */
+    private void logModelDecision(Portfolio portfolio, InferenceResponseDTO result) {
         result.getTargetWeights().forEach((ticker, weight) -> {
-            if (ticker.equals("CASH")) return; // Don't log cash as a stock signal
+            if ("CASH".equals(ticker)) return;
 
-            Stock stock = stockRepository.findByTickerIgnoreCase(ticker).orElse(null);
-            if (stock != null) {
+            stockRepository.findByTickerIgnoreCase(ticker).ifPresent(stock -> {
                 ModelSignal signal = ModelSignal.builder()
                         .portfolio(portfolio)
                         .stock(stock)
@@ -149,10 +140,14 @@ public class ModelIntegrationService {
                         .modelVersion(result.getModelVersion())
                         .predictedConfidence(result.getConfidenceScore())
                         .targetWeight(weight)
-                        .actionRecommended(weight > 0 ? com.trader.trading_backend.Enum.SignalAction.BUY : com.trader.trading_backend.Enum.SignalAction.SELL) // Simplified logic
+                        .actionRecommended(
+                            weight > 0
+                                ? com.trader.trading_backend.Enum.SignalAction.BUY
+                                : com.trader.trading_backend.Enum.SignalAction.SELL
+                        )
                         .build();
                 modelSignalRepository.save(signal);
-            }
+            });
         });
     }
 }

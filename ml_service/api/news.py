@@ -83,77 +83,113 @@ def analyze_sentiment(text: str) -> dict:
 
 def fetch_news(ticker: str, days: int = 7) -> list:
     """
-    Fetch news articles for a stock ticker
+    Fetch news articles for a stock ticker and score them with FinBERT.
     Args:
-        ticker: Stock symbol (e.g., 'AAPL')
+        ticker: Stock symbol e.g. 'RELIANCE.NS' or 'AAPL'
         days: Number of days to look back
     Returns:
-        List of news articles with sentiment scores
+        List of news articles with FinBERT sentiment scores
     """
     try:
-        # Get company name for better search results
+        # ── Company name map (used as search query) ───────────────────────────
+        # Indian NSE stocks (strip .NS suffix for lookup)
         company_map = {
-            'AAPL': 'Apple',
-            'MSFT': 'Microsoft',
+            # ── Indian Nifty 50 ──────────────────────────────────────────────
+            'RELIANCE':    'Reliance Industries',
+            'TCS':         'Tata Consultancy Services TCS',
+            'HDFCBANK':    'HDFC Bank',
+            'INFY':        'Infosys',
+            'ICICIBANK':   'ICICI Bank',
+            'HINDUNILVR':  'Hindustan Unilever HUL',
+            'SBIN':        'State Bank of India SBI',
+            'BAJFINANCE':  'Bajaj Finance',
+            'BHARTIARTL':  'Bharti Airtel',
+            'KOTAKBANK':   'Kotak Mahindra Bank',
+            'WIPRO':       'Wipro',
+            'HCLTECH':     'HCL Technologies',
+            'ASIANPAINT':  'Asian Paints',
+            'AXISBANK':    'Axis Bank',
+            'MARUTI':      'Maruti Suzuki',
+            'SUNPHARMA':   'Sun Pharmaceutical',
+            'TITAN':       'Titan Company',
+            'TATAMOTORS':  'Tata Motors',
+            'TATASTEEL':   'Tata Steel',
+            'ULTRACEMCO':  'UltraTech Cement',
+            'ADANIENT':    'Adani Enterprises',
+            'ADANIPORTS':  'Adani Ports',
+            'POWERGRID':   'Power Grid Corporation',
+            'NTPC':        'NTPC Limited',
+            'ONGC':        'ONGC Oil Natural Gas',
+            'COALINDIA':   'Coal India',
+            'GRASIM':      'Grasim Industries',
+            'TECHM':       'Tech Mahindra',
+            'LTIM':        'LTIMindtree',
+            'JSWSTEEL':    'JSW Steel',
+            # ── US Stocks ────────────────────────────────────────────────────
+            'AAPL':  'Apple',
+            'MSFT':  'Microsoft',
             'GOOGL': 'Google Alphabet',
-            'AMZN': 'Amazon',
-            'TSLA': 'Tesla',
-            'NVDA': 'Nvidia',
-            'META': 'Meta Facebook'
+            'AMZN':  'Amazon',
+            'TSLA':  'Tesla',
+            'NVDA':  'Nvidia',
+            'META':  'Meta Facebook',
         }
-        query = f"{company_map.get(ticker, ticker)} stock"
-        
+
+        # Strip exchange suffix (.NS / .BO) for map lookup
+        base_ticker = ticker.split('.')[0].upper()
+        company_name = company_map.get(base_ticker, base_ticker)
+
+        # Add "stock NSE" suffix for Indian tickers to narrow results
+        if ticker.endswith('.NS') or ticker.endswith('.BO'):
+            query = f"{company_name} stock NSE India"
+        else:
+            query = f"{company_name} stock"
+
         # Calculate date range
-        end_date = datetime.now()
+        end_date   = datetime.now()
         start_date = end_date - timedelta(days=days)
-        
+
         # Fetch from NewsAPI
         params = {
-            'q': query,
-            'from': start_date.strftime('%Y-%m-%d'),
-            'to': end_date.strftime('%Y-%m-%d'),
+            'q':        query,
+            'from':     start_date.strftime('%Y-%m-%d'),
+            'to':       end_date.strftime('%Y-%m-%d'),
             'language': 'en',
-            'sortBy': 'publishedAt',
-            'apiKey': NEWS_API_KEY,
-            'pageSize': 20  # Max articles
+            'sortBy':   'publishedAt',
+            'apiKey':   NEWS_API_KEY,
+            'pageSize': 20
         }
-        
-        print(f"📰 Fetching news for {ticker}...")
+
+        print(f"📰 Fetching news for {ticker} (query: '{query}')...")
         response = requests.get(NEWS_API_URL, params=params, timeout=10)
-        
+
         if response.status_code != 200:
             print(f"⚠️  NewsAPI error: {response.status_code}")
             return []
-        
-        data = response.json()
-        articles = data.get('articles', [])
-        
+
+        articles = response.json().get('articles', [])
         print(f"   Found {len(articles)} articles")
-        
-        # Analyze sentiment for each article
+
+        # FinBERT-score each article
         news_with_sentiment = []
         for article in articles:
-            # Combine title and description for sentiment analysis
-            text = f"{article.get('title', '')} {article.get('description', '')}"
-            
-            if not text.strip():
+            text = f"{article.get('title', '')} {article.get('description', '')}".strip()
+            if not text:
                 continue
-            
             sentiment = analyze_sentiment(text)
-            
             news_with_sentiment.append({
-                'title': article.get('title'),
+                'title':       article.get('title'),
                 'description': article.get('description'),
-                'content': article.get('content'),
-                'source': article.get('source', {}).get('name'),
+                'content':     article.get('content'),
+                'source':      article.get('source', {}).get('name'),
                 'publishedAt': article.get('publishedAt'),
-                'url': article.get('url'),
-                'sentiment': sentiment
+                'url':         article.get('url'),
+                'sentiment':   sentiment,
             })
-        
-        print(f"   ✅ Analyzed sentiment for {len(news_with_sentiment)} articles")
+
+        print(f"   ✅ Scored {len(news_with_sentiment)} articles with FinBERT")
         return news_with_sentiment
-    
+
     except Exception as e:
         print(f"❌ News fetch failed for {ticker}: {e}")
         return []

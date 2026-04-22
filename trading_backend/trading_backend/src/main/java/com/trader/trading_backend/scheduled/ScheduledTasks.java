@@ -1,6 +1,5 @@
 package com.trader.trading_backend.scheduled;
 
-import com.trader.trading_backend.service.DataMaintenanceService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
@@ -11,137 +10,113 @@ import org.springframework.web.client.RestTemplate;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * ScheduledTasks — periodic automation jobs.
+ *
+ * Removed:
+ *   ❌ weeklyDataSync()   — market data is fetched on-demand by yfinance in ML service
+ *   ❌ dailyNewsFetch()   — news + sentiment fetched on-demand per predict call
+ *
+ * Kept:
+ *   ✅ quarterlyModelRetraining() — triggers full LSTM+PPO retrain every 3 months
+ *   ✅ monthlyQuickUpdate()       — fine-tunes PPO on fresh data monthly (fast)
+ */
 @Component
 @RequiredArgsConstructor
 public class ScheduledTasks {
 
-    private final DataMaintenanceService dataMaintenanceService;
     private final RestTemplate restTemplate = new RestTemplate();
 
     @Value("${ai.service.url:http://localhost:8000}")
     private String mlServiceUrl;
 
-    // List of stocks to train on
+    // Default Indian Nifty 50 stock universe for scheduled retraining.
+    // Override via application.properties: ai.training.stocks
     private static final List<String> TRAINING_STOCKS = List.of(
-            "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA"
+            "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS"
     );
 
-    /**
-     * DATA MAINTENANCE: Every 30 days
-     * Compresses old news data to save storage
-     * 
-     * Runs on the 1st of every month at 2:00 AM
-     */
-    @Scheduled(cron = "0 0 2 1 * *")  // Monthly: 1st day, 2 AM
-    public void monthlyDataMaintenance() {
-        System.out.println("======================================");
-        System.out.println("🗄️  SCHEDULED: Monthly Data Maintenance");
-        System.out.println("======================================");
-
-        try {
-            dataMaintenanceService.compressoldnews();
-            System.out.println("✅ Data maintenance completed successfully");
-        } catch (Exception e) {
-            System.err.println("❌ Data maintenance failed: " + e.getMessage());
-            e.printStackTrace();
-        }
-
-        System.out.println("======================================\n");
-    }
-
-    /**
-     * MODEL RETRAINING: Every 3 months
-     * Trains LSTM+RL model with last 90 days of data from PostgreSQL
-     * 
-     * Runs on: Jan 1, Apr 1, Jul 1, Oct 1 at 3:00 AM
-     */
-    @Scheduled(cron = "0 0 3 1 1,4,7,10 *")  // Quarterly: Jan/Apr/Jul/Oct 1st, 3 AM
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Quarterly: Full retrain (LSTM + PPO from scratch)
+    //  Runs: Jan 1, Apr 1, Jul 1, Oct 1 at 03:00 AM
+    // ─────────────────────────────────────────────────────────────────────────
+    @Scheduled(cron = "0 0 3 1 1,4,7,10 *")
     public void quarterlyModelRetraining() {
-        System.out.println("======================================");
-        System.out.println("🤖 SCHEDULED: Quarterly Model Retraining");
-        System.out.println("   Stocks: " + TRAINING_STOCKS);
-        System.out.println("   Data: Last 90 days");
-        System.out.println("======================================");
+        System.out.println("==============================================");
+        System.out.println("🤖 SCHEDULED: Quarterly Full Retrain");
+        System.out.println("   Stocks : " + TRAINING_STOCKS);
+        System.out.println("   Data   : 2015-01-01 → today (via yfinance)");
+        System.out.println("==============================================");
 
         try {
-            // Trigger training via ML service
-            String url = mlServiceUrl + "/api/ml/trigger-training";
+            String url = mlServiceUrl + "/api/train/multi-stock";
 
             Map<String, Object> request = Map.of(
-                    "stocks", TRAINING_STOCKS,
-                    "daysOfData", 90,
-                    "lstmEpochs", 20,
-                    "ppoTimesteps", 500000
+                    "stocks",    TRAINING_STOCKS,
+                    "startDate", "2015-01-01",
+                    "endDate",   java.time.LocalDate.now().toString(),
+                    "config",    Map.of(
+                            "lstmEpochs",    20,
+                            "ppoTimesteps",  500000,
+                            "initialBalance", 100000
+                    )
             );
 
-            System.out.println("📤 Sending training request to: " + url);
-
             ResponseEntity<Map> response = restTemplate.postForEntity(url, request, Map.class);
-            Map<String, Object> result = response.getBody();
+            Map<?, ?> result = response.getBody();
 
-            System.out.println("✅ Training initiated: " + result.get("trainingId"));
-            System.out.println("   Monitor at: /api/ml/training-status/" + result.get("trainingId"));
+            System.out.println("✅ Full retrain initiated.");
+            System.out.println("   Training ID : " + (result != null ? result.get("trainingId") : "unknown"));
+            System.out.println("   Poll at     : GET /api/train/status/<id>");
 
         } catch (Exception e) {
-            System.err.println("❌ Model retraining failed: " + e.getMessage());
+            System.err.println("❌ Quarterly retraining failed: " + e.getMessage());
             e.printStackTrace();
         }
 
-        System.out.println("======================================\n");
+        System.out.println("==============================================\n");
     }
 
-    /**
-     * OPTIONAL: Weekly data sync
-     * Keeps market data up to date
-     * 
-     * Runs every Sunday at 1:00 AM
-     */
-    @Scheduled(cron = "0 0 1 * * SUN")  // Weekly: Sunday 1 AM
-    public void weeklyDataSync() {
-        System.out.println("======================================");
-        System.out.println("📊 SCHEDULED: Weekly Data Sync");
-        System.out.println("======================================");
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Monthly: Quick PPO fine-tune (skips LSTM retraining, fast ~20 min)
+    //  Runs: 1st of every month at 02:00 AM (skips quarterly months)
+    // ─────────────────────────────────────────────────────────────────────────
+    @Scheduled(cron = "0 0 2 1 2,3,5,6,8,9,11,12 *")
+    public void monthlyQuickUpdate() {
+        System.out.println("==============================================");
+        System.out.println("⚡ SCHEDULED: Monthly Quick PPO Update");
+        System.out.println("   Stocks : " + TRAINING_STOCKS);
+        System.out.println("   Steps  : 50,000 fine-tune timesteps");
+        System.out.println("==============================================");
 
         try {
-            // This would call MarketDataService.syncstockprices()
-            // For now, just logging
-            System.out.println("⏭️  Skipped: Manual trigger preferred");
-            // Uncomment when ready to automate:
-            // marketDataService.syncstockprices(TRAINING_STOCKS);
+            String url = mlServiceUrl + "/api/train/quick-update";
+
+            // Use last 12 months of data for the environment during fine-tuning
+            String startDate = java.time.LocalDate.now().minusMonths(12).toString();
+            String endDate   = java.time.LocalDate.now().toString();
+
+            Map<String, Object> request = Map.of(
+                    "stocks",    TRAINING_STOCKS,
+                    "startDate", startDate,
+                    "endDate",   endDate,
+                    "config",    Map.of(
+                            "ppoTimesteps",   50000,
+                            "initialBalance", 100000
+                    )
+            );
+
+            ResponseEntity<Map> response = restTemplate.postForEntity(url, request, Map.class);
+            Map<?, ?> result = response.getBody();
+
+            System.out.println("✅ Quick update initiated.");
+            System.out.println("   Training ID : " + (result != null ? result.get("trainingId") : "unknown"));
 
         } catch (Exception e) {
-            System.err.println("❌ Data sync failed: " + e.getMessage());
+            System.err.println("❌ Monthly quick update failed: " + e.getMessage());
+            e.printStackTrace();
         }
 
-        System.out.println("======================================\n");
-    }
-    
-    /**
-     * DAILY NEWS SYNC: Every day at midnight
-     * Fetches latest news and sentiment for all stocks
-     * 
-     * Runs daily at 12:00 AM
-     */
-    @Scheduled(cron = "0 0 0 * * *")  // Daily: Midnight
-    public void dailyNewsFetch() {
-        System.out.println("======================================");
-        System.out.println("📰 SCHEDULED: Daily News & Sentiment Sync");
-        System.out.println("======================================");
-
-        try {
-            // This would call NewsService.fetchNewsForMultipleStocks()
-            // For now, just logging
-            System.out.println("⏭️  News fetching configured");
-            System.out.println("   Stocks: " + TRAINING_STOCKS);
-            System.out.println("   Last 1 day of news");
-            
-            // Uncomment when ready to activate:
-            // newsService.fetchNewsForMultipleStocks(TRAINING_STOCKS, 1);
-
-        } catch (Exception e) {
-            System.err.println("❌ News fetch failed: " + e.getMessage());
-        }
-
-        System.out.println("======================================\n");
+        System.out.println("==============================================\n");
     }
 }

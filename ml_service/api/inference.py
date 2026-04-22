@@ -17,13 +17,24 @@ LSTM_HIDDEN_DIM  = 50
 LSTM_NUM_LAYERS  = 2
 LSTM_SEQ_LEN     = 30   # sequence_length used during training
 MODEL_DIR        = "models/saved_models"
-STOCKS           = ["AAPL", "AMZN", "GOOGL", "MSFT", "TSLA"]   # sorted alphabetically
+MAX_STOCKS       = 10   # Fixed "slots" for the AI brain to support dynamic tickers
+
+# Default Indian Nifty 50 stocks (configurable via DEFAULT_STOCKS env var).
+# Frontend/training pipeline can always pass a custom list — this is just
+# the startup default used to pre-load LSTM .pth files.
+_DEFAULT_STOCKS_ENV = os.getenv("DEFAULT_STOCKS", "")
+STOCKS: List[str] = (
+    [s.strip() for s in _DEFAULT_STOCKS_ENV.split(",") if s.strip()]
+    if _DEFAULT_STOCKS_ENV
+    else ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS"]
+)
 
 # ── Global state ─────────────────────────────────────────────────────────────
 active_model         = None
 active_model_version = "none"
-lstm_predictors: Dict = {}    # {"AAPL": LSTMPredictor, ...}
-lstm_input_dims: Dict = {}    # {"AAPL": 10, ...}  auto-detected from .pth
+lstm_predictors: Dict = {}    # {"RELIANCE.NS": LSTMPredictor, ...}
+lstm_input_dims: Dict = {}    # {"RELIANCE.NS": 10, ...}  auto-detected from .pth
+active_tickers: List  = []    # Currently active tickers for inference
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -93,22 +104,155 @@ def load_active_model() -> bool:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+#  Market data helpers (fetch directly from yfinance — no DB needed)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _fetch_market_data_from_yfinance(tickers: List[str], seq_len: int = None) -> dict:
+    """
+    Fetch the last `seq_len` trading days of OHLCV data from yfinance for
+    each ticker. Returns a dict keyed by ticker, each value being a list of
+    row-dicts ready for the existing feature pipeline.
+
+    Returns:
+        {
+            "RELIANCE.NS": [
+                {"date": "2025-04-01", "close": 1420.5, "volume": 5000000, "sentimentScore": 0.0},
+                ...
+            ],
+            ...
+        }
+    """
+    import yfinance as yf
+    from datetime import datetime, timedelta
+
+    if seq_len is None:
+        seq_len = LSTM_SEQ_LEN
+
+    # Fetch extra calendar days to guarantee seq_len trading days after
+    # weekends and Indian market holidays are filtered out.
+    buffer_days = seq_len * 3
+    end_dt      = datetime.now()
+    start_dt    = end_dt - timedelta(days=buffer_days)
+
+    market_data: dict = {}
+
+    for ticker in tickers:
+        try:
+            df = yf.download(
+                ticker,
+                start=start_dt.strftime('%Y-%m-%d'),
+                end=end_dt.strftime('%Y-%m-%d'),
+                auto_adjust=True,
+                progress=False,
+            )
+
+            if df.empty:
+                print(f"   ⚠️  yfinance returned empty data for {ticker}")
+                market_data[ticker] = []
+                continue
+
+            # Flatten MultiIndex if yfinance returns one
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = [col[0] for col in df.columns]
+
+            # Keep only the last seq_len trading days
+            df = df.tail(seq_len)
+
+            rows = []
+            for date, row in df.iterrows():
+                rows.append({
+                    "date"          : str(date)[:10],
+                    "close"         : float(row.get("Close",  0.0)),
+                    "volume"        : float(row.get("Volume", 0.0)),
+                    "sentimentScore": 0.0,   # filled in by _attach_sentiment
+                })
+
+            market_data[ticker] = rows
+            print(f"   ✅ yfinance: {len(rows)} days fetched for {ticker}")
+
+        except Exception as e:
+            print(f"   ❌ yfinance fetch failed for {ticker}: {e}")
+            market_data[ticker] = []
+
+    return market_data
+
+
+def _attach_sentiment_to_market_data(market_data: dict) -> dict:
+    """
+    For each ticker in market_data, fetch recent FinBERT sentiment scores
+    and attach them to each row's 'sentimentScore' field.
+
+    Falls back gracefully (sentimentScore stays 0.0) if:
+      - NEWS_API_KEY is not configured
+      - NewsAPI returns no articles
+      - FinBERT fails for any reason
+
+    Note: 0.0 here is only used for the last ~30 days during inference.
+    The LSTM was trained with a consistent simulated signal, so a neutral
+    (0.0) score during inference is the safest honest default when real
+    data is unavailable.
+    """
+    from data.feature_engineer import FeatureEngineer
+
+    fe = FeatureEngineer()
+
+    for ticker, rows in market_data.items():
+        if not rows:
+            continue
+
+        dates = pd.to_datetime([r['date'] for r in rows])
+        idx   = pd.DatetimeIndex(dates)
+
+        sentiment_scores = fe.fetch_and_score_sentiment(
+            ticker   = ticker,
+            df_index = idx,
+            days_back = 14,   # last 2 weeks of news is enough for 30-day window
+        )
+
+        if sentiment_scores and len(sentiment_scores) == len(rows):
+            for i, row in enumerate(rows):
+                row['sentimentScore'] = float(sentiment_scores[i])
+        # If None, sentimentScore stays 0.0 — inference already handles this
+
+    return market_data
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 #  Predict endpoint
 # ─────────────────────────────────────────────────────────────────────────────
 
 @inference_bp.route('/predict', methods=['POST'])
 def predict():
     """
-    Portfolio rebalancing prediction endpoint.
+    Simplified portfolio rebalancing prediction.
+
+    Spring Boot only needs to send portfolio state + which tickers to use.
+    This endpoint fetches market data from yfinance and sentiment from
+    NewsAPI/FinBERT internally — no market data storage in Spring Boot required.
 
     Request Body:
     {
-        "currentCash": 5000.0,
-        "currentHoldings": {"AAPL": 2000, "MSFT": 2000, "GOOGL": 1000},
-        "marketData": {
-            "AAPL": [{"date": "2024-01-01", "close": 150, "volume": 1000000, "sentimentScore": 0.5}, ...],
-            ...
-        }
+        "currentCash": 100000.0,
+        "currentHoldings": {
+            "RELIANCE.NS": 25000.0,
+            "TCS.NS": 18000.0
+        },
+        "tickers": ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS"]
+    }
+
+    Response:
+    {
+        "modelVersion": "v1.0.0",
+        "targetWeights": {
+            "RELIANCE.NS": 0.25,
+            "TCS.NS": 0.20,
+            "HDFCBANK.NS": 0.18,
+            "INFY.NS": 0.22,
+            "ICICIBANK.NS": 0.10,
+            "CASH": 0.05
+        },
+        "confidenceScore": 0.82,
+        "metadata": { "timestamp": "...", "numStocks": 5, "currentValue": 143000.0 }
     }
     """
     try:
@@ -116,25 +260,59 @@ def predict():
             return jsonify({"error": {"code": "INVALID_REQUEST",
                                       "message": "Request body must be JSON"}}), 400
 
-        data = request.json
-        missing = [f for f in ['currentCash', 'currentHoldings', 'marketData'] if f not in data]
+        data    = request.json
+        missing = [f for f in ['currentCash', 'currentHoldings', 'tickers'] if f not in data]
         if missing:
             return jsonify({"error": {"code": "MISSING_FIELDS",
                                       "message": f"Missing: {', '.join(missing)}"}}), 400
 
+        tickers = data.get('tickers', [])
+        if not tickers:
+            return jsonify({"error": {"code": "INVALID_REQUEST",
+                                      "message": "'tickers' list cannot be empty"}}), 400
+
         if active_model is None:
             return jsonify({"error": {"code": "MODEL_NOT_LOADED",
-                                      "message": "No active model loaded."}}), 503
+                                      "message": "No active model loaded. Train one first."}}), 503
 
-        observation = prepare_observation(data)
-        action, _   = active_model.predict(observation, deterministic=True)
-        weights      = normalize_weights(action)
+        # ── Step 1: Fetch last LSTM_SEQ_LEN trading days from yfinance ─────────
+        print(f"📊 Fetching {LSTM_SEQ_LEN} days of market data for: {tickers}")
+        market_data = _fetch_market_data_from_yfinance(tickers, seq_len=LSTM_SEQ_LEN)
 
-        stock_tickers = sorted(data['marketData'].keys())
+        # Check that at least some data came back
+        empty_tickers = [t for t, rows in market_data.items() if not rows]
+        if len(empty_tickers) == len(tickers):
+            return jsonify({"error": {"code": "DATA_FETCH_FAILED",
+                                      "message": "yfinance returned no data for any ticker. "
+                                                 "Check ticker symbols and internet connectivity."}}), 502
+        if empty_tickers:
+            print(f"   ⚠️  No data for: {empty_tickers} — they will be excluded from observation.")
+            for t in empty_tickers:
+                del market_data[t]
+
+        # ── Step 2: Attach FinBERT sentiment to each day ───────────────────
+        print("📰 Fetching news sentiment via FinBERT...")
+        market_data = _attach_sentiment_to_market_data(market_data)
+
+        # ── Step 3: Build observation and run PPO inference ────────────────
+        internal_data = {
+            'currentCash'    : float(data['currentCash']),
+            'currentHoldings': data['currentHoldings'],
+            'marketData'     : market_data,
+        }
+
+        observation    = prepare_observation(internal_data)
+        action, _      = active_model.predict(observation, deterministic=True)
+        weights        = normalize_weights(action)
+
+        stock_tickers  = sorted(market_data.keys())
         target_weights = {t: float(weights[i]) for i, t in enumerate(stock_tickers)}
-        target_weights['CASH'] = float(weights[-1])
+        target_weights['CASH'] = float(weights[len(stock_tickers)])
 
-        confidence = calculate_confidence(weights, observation)
+        confidence     = calculate_confidence(weights, observation)
+        total_value    = float(data['currentCash']) + sum(
+            float(v) for v in data['currentHoldings'].values()
+        )
 
         return jsonify({
             "modelVersion"   : active_model_version,
@@ -143,13 +321,14 @@ def predict():
             "metadata": {
                 "timestamp"   : pd.Timestamp.now().isoformat(),
                 "numStocks"   : len(stock_tickers),
-                "currentValue": float(data['currentCash']) + sum(data['currentHoldings'].values()),
+                "currentValue": total_value,
+                "dataSource"  : "yfinance",
+                "tickers"     : stock_tickers,
             }
         }), 200
 
     except Exception as e:
         import traceback
-        print(f"Error in predict endpoint: {e}")
         traceback.print_exc()
         return jsonify({"error": {"code": "INTERNAL_ERROR", "message": str(e)}}), 500
 
@@ -292,61 +471,75 @@ def _compute_risk_metrics(close_prices: np.ndarray) -> np.ndarray:
 
 def prepare_observation(request_data: dict) -> np.ndarray:
     """
-    Build the PPO observation vector from the API request.
+    Build the PPO observation vector from the API request with padding for MAX_STOCKS.
 
-    Layout (matches MultiStockPortfolioEnv with lstm_predictor set):
-      lstm_states(50*N) | norm_prices(N) | portfolio_weights(N+1) |
+    Layout (Fixed for MAX_STOCKS=10):
+      lstm_states(50*10) | norm_prices(10) | portfolio_weights(11) |
       portfolio_state(3) | recent_returns(5) | risk_metrics(2)
     """
     current_cash     = float(request_data['currentCash'])
     current_holdings = request_data['currentHoldings']
     market_data      = request_data['marketData']
 
-    stock_tickers = sorted(market_data.keys())
+    input_tickers = sorted(market_data.keys())
+    num_input_stocks = len(input_tickers)
+    
     total_value   = current_cash + sum(current_holdings.values())
-    initial_balance = 10000.0   # matches INITIAL_BALANCE in test_api_evaluation.py
+    initial_balance = 10000.0   # Matches training baseline
 
-    # ── 1. LSTM latent states ────────────────────────────────────────────────
+    # ── 1. LSTM latent states (Padded to MAX_STOCKS) ─────────────────────────
     lstm_parts = []
-    for ticker in stock_tickers:
-        state = _compute_lstm_state(ticker, market_data[ticker])
-        lstm_parts.append(state)
+    for i in range(MAX_STOCKS):
+        if i < num_input_stocks:
+            ticker = input_tickers[i]
+            state = _compute_lstm_state(ticker, market_data[ticker])
+            lstm_parts.append(state)
+        else:
+            # Pad with zeros for unused slots
+            lstm_parts.append(np.zeros(LSTM_HIDDEN_DIM, dtype=np.float32))
     lstm_states = np.concatenate(lstm_parts).astype(np.float32)
 
-    # ── 2. Normalised current prices (relative to first price in window) ─────
-    current_prices, first_prices = [], []
-    for ticker in stock_tickers:
-        rows = market_data[ticker]
-        fp = float(rows[0].get('close', 100.0))  if rows else 100.0
-        cp = float(rows[-1].get('close', 100.0)) if rows else 100.0
-        first_prices.append(fp)
-        current_prices.append(cp)
-    normalized_prices = (np.array(current_prices, dtype=np.float32) /
-                         (np.array(first_prices,  dtype=np.float32) + 1e-8))
+    # ── 2. Normalised current prices (Padded to MAX_STOCKS) ──────────────────
+    normalized_prices_list = []
+    for i in range(MAX_STOCKS):
+        if i < num_input_stocks:
+            ticker = input_tickers[i]
+            rows = market_data[ticker]
+            fp = float(rows[0].get('close', 100.0))
+            cp = float(rows[-1].get('close', 100.0))
+            normalized_prices_list.append(cp / (fp + 1e-8))
+        else:
+            normalized_prices_list.append(0.0)
+    normalized_prices = np.array(normalized_prices_list, dtype=np.float32)
 
-    # ── 3. Portfolio weights ─────────────────────────────────────────────────
+    # ── 3. Portfolio weights (Padded: MAX_STOCKS weights + 1 cash) ───────────
     weights_list = []
-    for ticker in stock_tickers:
-        v = float(current_holdings.get(ticker, 0.0))
-        weights_list.append(v / total_value if total_value > 0 else 0.0)
+    for i in range(MAX_STOCKS):
+        if i < num_input_stocks:
+            ticker = input_tickers[i]
+            v = float(current_holdings.get(ticker, 0.0))
+            weights_list.append(v / total_value if total_value > 0 else 0.0)
+        else:
+            weights_list.append(0.0)
     weights_list.append(current_cash / total_value if total_value > 0 else 1.0)
     portfolio_weights = np.array(weights_list, dtype=np.float32)
 
-    # ── 4. Portfolio state ───────────────────────────────────────────────────
+    # ── 4. Portfolio state (Fixed 3) ──────────────────────────────────────────
     portfolio_state = np.array([
         total_value / initial_balance,
         current_cash / initial_balance,
         (total_value - initial_balance) / initial_balance,
     ], dtype=np.float32)
 
-    # ── 5. Recent returns (use first ticker as proxy) ────────────────────────
-    first_ticker = stock_tickers[0]
-    close_arr    = np.array([d.get('close', 100.0) for d in market_data[first_ticker]],
-                            dtype=np.float32)
-    recent_returns = _compute_recent_returns(close_arr, n=5)
-
-    # ── 6. Risk metrics ──────────────────────────────────────────────────────
-    risk_metrics = _compute_risk_metrics(close_arr)
+    # ── 5. Recent returns (Fixed 5) ───────────────────────────────────────────
+    if num_input_stocks > 0:
+        first_ticker = input_tickers[0]
+        close_arr    = np.array([d.get('close', 100.0) for d in market_data[first_ticker]], dtype=np.float32)
+        recent_returns = _compute_recent_returns(close_arr, n=5)
+        risk_metrics = _compute_risk_metrics(close_arr)
+    else:
+        recent_returns = np.zeros(5, dtype=np.float32)
+        risk_metrics = np.zeros(2, dtype=np.float32)
 
     # ── Concatenate & clip ───────────────────────────────────────────────────
     obs = np.concatenate([

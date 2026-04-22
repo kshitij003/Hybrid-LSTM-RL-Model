@@ -6,14 +6,30 @@ Main application entry point
 from flask import Flask, jsonify
 from flask_cors import CORS
 import os
+import logging
+import sys
+
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
 
 # Create Flask app
 app = Flask(__name__)
 
 # Enable CORS for Spring Boot backend
+# ALLOWED_ORIGIN can be set in .env for production (e.g., your cloud frontend URL)
+_allowed_origins = os.getenv("ALLOWED_ORIGIN", "http://localhost:8080")
+_origins_list = [o.strip() for o in _allowed_origins.split(",") if o.strip()]
+
 CORS(app, resources={
     r"/api/*": {
-        "origins": ["http://localhost:8080"],
+        "origins": _origins_list,
         "methods": ["GET", "POST", "DELETE"],
         "allow_headers": ["Content-Type", "Authorization"]
     }
@@ -46,12 +62,16 @@ from api.inference import inference_bp, load_active_model
 from api.training import training_bp
 from api.news import news_bp
 from api.models import models_bp
+from api.dynamic_learn_service import dynamic_learn_bp
+from api.groww_bridge import trade_bp
 
 # Register blueprints
 app.register_blueprint(inference_bp, url_prefix='/api')
 app.register_blueprint(training_bp, url_prefix='/api/train')
 app.register_blueprint(news_bp, url_prefix='/api/news')
 app.register_blueprint(models_bp, url_prefix='/api/models')
+app.register_blueprint(dynamic_learn_bp, url_prefix='/api/train')
+app.register_blueprint(trade_bp, url_prefix='/api')
 
 
 # ============================================

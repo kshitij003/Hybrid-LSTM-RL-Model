@@ -11,9 +11,14 @@ import com.trader.trading_backend.entity.Market_Data_Management.Stock;
 import com.trader.trading_backend.entity.Portfolio_Trading_Engine.Holding;
 import com.trader.trading_backend.entity.Portfolio_Trading_Engine.Portfolio;
 import com.trader.trading_backend.entity.Portfolio_Trading_Engine.Transaction;
+import com.trader.trading_backend.controller.DashboardController;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestTemplate;
+
+import java.util.HashMap;
+import java.util.Map;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -49,12 +54,17 @@ public class OrderExecutionService {
         // 2. Get Real-Time Price
         BigDecimal currentPrice = getLatestPrice(stock);
 
-        // 3. Calculate Financials
+        // 3. Handle LIVE Trading Bridge (External API)
+        if (DashboardController.isLiveTradingMode) {
+            triggerLiveTrade(request.getTicker(), request.getType().name(), request.getQuantity());
+        }
+
+        // 4. Calculate Financials
         BigDecimal tradeAmount = currentPrice.multiply(BigDecimal.valueOf(request.getQuantity()));
         BigDecimal fee = tradeAmount.multiply(TRANSACTION_FEE_PERCENT);
         BigDecimal finalAmount = tradeAmount.add(fee); // Total cost to user
 
-        // 4. Route to Buy or Sell Logic
+        // 5. Route to Buy or Sell Logic
         if (request.getType() == TransactionType.BUY) {
             return processBuy(portfolio, stock, request.getQuantity(), currentPrice, tradeAmount, fee);
         } else {
@@ -155,9 +165,27 @@ public class OrderExecutionService {
 
     private BigDecimal getLatestPrice(Stock stock) {
         // Fetch most recent price (Limit 1)
-        // Make sure your PriceRepo has the Pageable method we discussed!
         return priceRepo.findByStockIdOrderByTimestampDesc(stock.getId(), org.springframework.data.domain.PageRequest.of(0, 1))
                 .get(0).getClosePrice();
+    }
+
+    private void triggerLiveTrade(String ticker, String action, int quantity) {
+        try {
+            System.out.println("🚀 [LIVE BRIDGE] Sending order to Groww Bridge: {} {} shares of {}"+action+quantity+ticker);
+            RestTemplate restTemplate = new RestTemplate();
+            String url = "http://localhost:8000/api/trade";
+            
+            Map<String, Object> request = new HashMap<>();
+            request.put("ticker", ticker);
+            request.put("type", action);
+            request.put("quantity", quantity);
+            
+            restTemplate.postForEntity(url, request, String.class);
+            System.out.println("✅ [LIVE BRIDGE] Groww acknowledge received");
+        } catch (Exception e) {
+            System.err.println("❌ [LIVE BRIDGE] FAILED to call Groww API: " + e.getMessage());
+            // In a production app, we would throw an exception here to rollback the transaction
+        }
     }
 }
 

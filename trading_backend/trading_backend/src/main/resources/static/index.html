@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Trading Hub | Portfolio Management</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-glow: rgba(99, 102, 241, 0.4);
+            --bg: #030712;
+            --card-bg: rgba(17, 24, 39, 0.7);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --text-main: #f9fafb;
+            --text-muted: #9ca3af;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            outline: none;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg);
+            color: var(--text-main);
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(139, 92, 246, 0.1) 0px, transparent 50%);
+            min-height: 100vh;
+        }
+
+        /* --- Header --- */
+        header {
+            padding: 1.5rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--glass-border);
+            backdrop-filter: blur(12px);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-family: 'Outfit', sans-serif;
+            font-weight: 800;
+            font-size: 1.5rem;
+            background: linear-gradient(135deg, #fff 0%, #a5b4fc 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: 9999px;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            color: var(--success);
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+
+        .status-badge.off {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            color: var(--danger);
+        }
+
+        /* --- Layout --- */
+        main {
+            padding: 2rem;
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 2rem;
+        }
+
+        /* --- Grid Cards --- */
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 1.5rem;
+            padding: 1.5rem;
+            backdrop-filter: blur(16px);
+            transition: transform 0.3s ease, border-color 0.3s ease;
+        }
+
+        .card:hover {
+            border-color: rgba(99, 102, 241, 0.3);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .card-title {
+            font-size: 1.125rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        /* --- Stats Row --- */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+            grid-column: 1 / -1;
+        }
+
+        .stat-card {
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .stat-label {
+            color: var(--text-muted);
+            font-size: 0.875rem;
+        }
+
+        .stat-value {
+            font-size: 1.75rem;
+            font-weight: 700;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        .stat-change {
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+
+        .up { color: var(--success); }
+        .down { color: var(--danger); }
+
+        /* --- Stock List --- */
+        .stock-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .stock-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 1rem;
+            border: 1px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .stock-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: var(--glass-border);
+        }
+
+        .stock-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .stock-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 0.75rem;
+            background: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 0.875rem;
+        }
+
+        .stock-name { font-weight: 600; }
+        .stock-ticker { 
+            font-size: 0.75rem; 
+            color: var(--text-muted); 
+            text-transform: uppercase;
+        }
+
+        .stock-weight {
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        /* --- Controls --- */
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .btn {
+            padding: 1rem 1.5rem;
+            border-radius: 1rem;
+            border: none;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+            transition: all 0.3s;
+            font-size: 1rem;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+            box-shadow: 0 4px 14px 0 var(--primary-glow);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px 0 var(--primary-glow);
+        }
+
+        .btn-danger {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+        }
+
+        .btn-danger:hover {
+            background: var(--danger);
+            color: white;
+        }
+
+        .add-stock-form {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .input-text {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--glass-border);
+            border-radius: 0.75rem;
+            padding: 0.75rem 1rem;
+            color: white;
+            font-family: inherit;
+        }
+
+        .input-text:focus {
+            border-color: var(--primary);
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        /* --- Logs --- */
+        #log-container {
+            height: 300px;
+            overflow-y: auto;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.85rem;
+            padding: 1rem;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .log-entry {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .log-time { color: var(--text-muted); }
+        .log-msg.ai { color: #a5b4fc; }
+        .log-msg.trade { color: var(--success); }
+        .log-msg.error { color: var(--danger); }
+
+        /* --- Responsive --- */
+        @media (max-width: 1024px) {
+            main { grid-template-columns: 1fr; }
+            .stats-grid { grid-template-columns: 1fr; }
+        }
+
+        .pulse {
+            animation: pulse-animation 2s infinite;
+        }
+
+        @keyframes pulse-animation {
+            0% { box-shadow: 0 0 0 0px rgba(16, 185, 129, 0.4); }
+            100% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo">
+            <i data-lucide="zap"></i>
+            ANTIGRAVITY TRADER
+        </div>
+        <div id="runtime-status" class="status-badge pulse">
+            <i data-lucide="shield-check"></i>
+            SYSTEM ACTIVE
+        </div>
+    </header>
+
+    <main>
+        <!-- Stats -->
+        <div class="stats-grid">
+            <div class="card stat-card">
+                <span class="stat-label">Portfolio Value (NAV)</span>
+                <span class="stat-value" id="nav-value">₹0.00</span>
+                <span class="stat-change up" id="nav-change">+0.00% Today</span>
+            </div>
+            <div class="card stat-card">
+                <span class="stat-label">AI Confidence Score</span>
+                <span class="stat-value" id="confidence-value">0%</span>
+                <span class="stat-change" id="confidence-status">Scanning Market...</span>
+            </div>
+            <div class="card stat-card">
+                <span class="stat-label">Active Stocks Pool</span>
+                <span class="stat-value" id="stocks-count">0</span>
+                <span class="stat-change" id="sync-status">All Systems Nominal</span>
+            </div>
+        </div>
+
+        <!-- Left Column: Strategy & Portfolio -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">
+                    <i data-lucide="trending-up"></i>
+                    AI Portfolio Allocation
+                </h2>
+                <div class="btn-group">
+                    <button class="btn btn-primary" onclick="triggerRebalance()">
+                        <i data-lucide="refresh-ccw"></i>
+                        Force Rebalance
+                    </button>
+                </div>
+            </div>
+            
+            <div class="stock-list" id="portfolio-list">
+                <!-- Stock Items will be injected here -->
+                <div class="stock-item">
+                    <div class="stock-info">
+                        <div class="stock-icon">C</div>
+                        <div>
+                            <div class="stock-name">Cash Balance</div>
+                            <div class="stock-ticker">Ready to deploy</div>
+                        </div>
+                    </div>
+                    <div class="stock-weight">100.0%</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column: Control & Logs -->
+        <div class="controls">
+            <div class="card">
+                <h2 class="card-title" style="margin-bottom: 1.5rem;">
+                    <i data-lucide="sliders"></i>
+                    Control Center
+                </h2>
+                
+                <div style="display: flex; flex-direction: column; gap: 1rem;">
+                    <button id="toggle-trading-btn" class="btn btn-danger" onclick="toggleTrading()">
+                        <i data-lucide="power"></i>
+                        STOP ALL TRADING
+                    </button>
+                    
+                    <button id="toggle-live-btn" class="btn btn-primary" style="background: #374151; box-shadow: none;" onclick="toggleLive()">
+                        <i data-lucide="beaker"></i>
+                        MODE: SIMULATION
+                    </button>
+                </div>
+
+                <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid var(--glass-border);">
+
+                <div class="add-stock-form">
+                    <input type="text" id="new-ticker" class="input-text" placeholder="Add Ticker (e.g. RELIANCE.NS)">
+                    <button class="btn btn-primary" style="padding: 0.75rem;" onclick="addStock()">
+                        <i data-lucide="plus"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="card" style="padding: 0;">
+                <div class="card-header" style="padding: 1.5rem 1.5rem 0.5rem 1.5rem;">
+                    <h2 class="card-title">
+                        <i data-lucide="terminal"></i>
+                        Live Order Stream
+                    </h2>
+                </div>
+                <div id="log-container">
+                    <div class="log-entry">
+                        <span class="log-time">[16:40:12]</span>
+                        <span class="log-msg ai">System initialized. Waiting for signal...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // Initialize Icons
+        lucide.createIcons();
+
+        // State
+        let isTrading = true;
+        let isLive = false;
+
+        async function updateDashboard() {
+            try {
+                const response = await fetch('/api/dashboard/metrics');
+                const data = await response.json();
+                
+                document.getElementById('nav-value').innerText = `₹${data.portfolioValue.toLocaleString()}`;
+                document.getElementById('nav-change').innerText = `${data.dayChange >= 0 ? '+' : ''}${data.dayChange.toFixed(2)}% Today`;
+                document.getElementById('confidence-value').innerText = `${(data.aiConfidence * 100).toFixed(0)}%`;
+                document.getElementById('stocks-count').innerText = data.activeStocks.length;
+                
+                // Update holdings
+                const list = document.getElementById('portfolio-list');
+                list.innerHTML = '';
+                
+                data.activeStocks.forEach(stock => {
+                    const item = document.createElement('div');
+                    item.className = 'stock-item';
+                    item.innerHTML = `
+                        <div class="stock-info">
+                            <div class="stock-icon">${stock.ticker[0]}</div>
+                            <div>
+                                <div class="stock-name">${stock.ticker}</div>
+                                <div class="stock-ticker">${stock.shares} shares held</div>
+                            </div>
+                        </div>
+                        <div class="stock-weight">${(stock.weight * 100).toFixed(1)}%</div>
+                    `;
+                    list.appendChild(item);
+                });
+
+                // Add Cash
+                const cashItem = document.createElement('div');
+                cashItem.className = 'stock-item';
+                cashItem.innerHTML = `
+                    <div class="stock-info">
+                        <div class="stock-icon" style="background:#374151">C</div>
+                        <div>
+                            <div class="stock-name">Cash Balance</div>
+                            <div class="stock-ticker">Liquid assets</div>
+                        </div>
+                    </div>
+                    <div class="stock-weight">${(data.cashWeight * 100).toFixed(1)}%</div>
+                `;
+                list.appendChild(cashItem);
+
+            } catch (e) {
+                console.error("Dashboard update failed", e);
+            }
+        }
+
+        async function toggleTrading() {
+            isTrading = !isTrading;
+            const btn = document.getElementById('toggle-trading-btn');
+            const status = document.getElementById('runtime-status');
+            
+            if (isTrading) {
+                btn.innerHTML = '<i data-lucide="power"></i> STOP ALL TRADING';
+                btn.className = 'btn btn-danger';
+                status.innerHTML = '<i data-lucide="shield-check"></i> SYSTEM ACTIVE';
+                status.className = 'status-badge pulse';
+            } else {
+                btn.innerHTML = '<i data-lucide="play"></i> START TRADING ENGINE';
+                btn.className = 'btn btn-primary';
+                btn.style.background = '#10b981';
+                status.innerHTML = '<i data-lucide="shield-off"></i> SYSTEM PAUSED';
+                status.className = 'status-badge off';
+            }
+            lucide.createIcons();
+            
+            await fetch('/api/dashboard/control', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ action: isTrading ? 'START' : 'STOP' })
+            });
+            addLog(`System ${isTrading ? 'Started' : 'Paused'}`, 'ai');
+        }
+
+        async function toggleLive() {
+            isLive = !isLive;
+            const btn = document.getElementById('toggle-live-btn');
+            
+            if (isLive) {
+                if (!confirm("⚠️ WARNING: You are enabling LIVE TRADING on Groww. Real money will be used. Continue?")) {
+                    isLive = false;
+                    return;
+                }
+                btn.innerHTML = '<i data-lucide="zap"></i> MODE: LIVE (REAL MONEY)';
+                btn.style.background = '#f59e0b';
+                btn.style.color = 'white';
+            } else {
+                btn.innerHTML = '<i data-lucide="beaker"></i> MODE: SIMULATION';
+                btn.style.background = '#374151';
+            }
+            lucide.createIcons();
+            
+            await fetch('/api/dashboard/control', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ mode: isLive ? 'LIVE' : 'SIM' })
+            });
+            addLog(`Mode changed to ${isLive ? 'LIVE' : 'SIMULATION'}`, 'ai');
+        }
+
+        async function addStock() {
+            const input = document.getElementById('new-ticker');
+            const ticker = input.value.toUpperCase();
+            if (!ticker) return;
+            
+            addLog(`Initiating learning for ${ticker}...`, 'ai');
+            
+            const response = await fetch('/api/stocks/add', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ ticker: ticker })
+            });
+            
+            if (response.ok) {
+                addLog(`Success! Training ${ticker} in background...`, 'trade');
+                input.value = '';
+            } else {
+                addLog(`Failed to add ${ticker}`, 'error');
+            }
+        }
+
+        async function triggerRebalance() {
+            addLog("Manual Rebalance triggered...", "ai");
+            await fetch('/api/portfolio/rebalance', { method: 'POST' });
+        }
+
+        function addLog(msg, type) {
+            const container = document.getElementById('log-container');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            const time = new Date().toLocaleTimeString();
+            entry.innerHTML = `<span class="log-time">[${time}]</span> <span class="log-msg ${type}">${msg}</span>`;
+            container.prepend(entry);
+        }
+
+        // Poll for updates
+        setInterval(updateDashboard, 3000);
+        updateDashboard();
+
+    </script>
+</body>
+</html>

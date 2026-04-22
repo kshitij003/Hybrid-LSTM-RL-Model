@@ -14,11 +14,11 @@ import requests
 import time
 from datetime import datetime, timedelta
 
-# Configuration
-STOCKS = ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA"]
-INITIAL_BALANCE = 10000
+# Configuration — Indian Nifty 50 stocks (NSE suffix for yfinance)
+STOCKS          = ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS"]
+INITIAL_BALANCE = 100000    # ₹1,00,000 (INR)
 SIMULATION_DAYS = 500
-API_URL = "http://localhost:8000/api/predict"
+API_URL         = "http://localhost:8000/api/predict"
 
 def fetch_stock_data(ticker, start, end):
     """Fetch with retries to handle yfinance timeouts"""
