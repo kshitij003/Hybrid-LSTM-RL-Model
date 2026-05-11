@@ -13,6 +13,20 @@ load_dotenv()
 # Configuration
 ML_SERVICE_URL = f"http://localhost:{os.getenv('PORT', '8000')}"
 DRY_RUN = os.getenv("DRY_RUN", "True").lower() == "true"
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+
+def send_telegram_message(message):
+    """Send notification to Telegram bot."""
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        return
+    
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+        payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"}
+        requests.post(url, json=payload, timeout=10)
+    except Exception as e:
+        logger.error(f"Failed to send Telegram message: {e}")
 
 def run_rebalancing_cycle(tickers):
     """
@@ -22,6 +36,7 @@ def run_rebalancing_cycle(tickers):
     4. Execute trades via Groww Bridge
     """
     logger.info("Starting Auto-Rebalancing Cycle...")
+    send_telegram_message(" <b>AI Rebalancer</b>: Starting new portfolio analysis...")
     
     # --- Step 1: Get Current Portfolio ---
     # For the demo, we assume a starting balance. 
@@ -86,6 +101,14 @@ def run_rebalancing_cycle(tickers):
                 trade_resp.raise_for_status()
                 result = trade_resp.json()
                 logger.info(f"[SUCCESS] {ticker} {trade_type} Order Result: {result['message']}")
+                
+                status_emoji = "" if DRY_RUN else ""
+                send_telegram_message(
+                    f"{status_emoji} <b>Trade Executed!</b>\n"
+                    f"Stock: <code>{ticker}</code>\n"
+                    f"Action: <b>{trade_type}</b>\n"
+                    f"Status: {result['message']}"
+                )
             except Exception as e:
                 logger.error(f"[FAILED] Failed to execute trade for {ticker}: {e}")
 

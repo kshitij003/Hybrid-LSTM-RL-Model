@@ -24,13 +24,11 @@ app = Flask(__name__)
 
 # Enable CORS for Spring Boot backend
 # ALLOWED_ORIGIN can be set in .env for production (e.g., your cloud frontend URL)
-_allowed_origins = os.getenv("ALLOWED_ORIGIN", "http://localhost:8080")
-_origins_list = [o.strip() for o in _allowed_origins.split(",") if o.strip()]
-
+# Allow all origins so the React dev server (any port) can reach Flask
 CORS(app, resources={
-    r"/api/*": {
-        "origins": _origins_list,
-        "methods": ["GET", "POST", "DELETE"],
+    r"/*": {
+        "origins": "*",
+        "methods": ["GET", "POST", "DELETE", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization"]
     }
 })
@@ -64,6 +62,8 @@ from api.news import news_bp
 from api.models import models_bp
 from api.dynamic_learn_service import dynamic_learn_bp
 from api.groww_bridge import trade_bp
+from api.portfolio_preferences import portfolio_bp
+from api.backtest_api import backtest_bp
 
 # Register blueprints
 app.register_blueprint(inference_bp, url_prefix='/api')
@@ -72,6 +72,8 @@ app.register_blueprint(news_bp, url_prefix='/api/news')
 app.register_blueprint(models_bp, url_prefix='/api/models')
 app.register_blueprint(dynamic_learn_bp, url_prefix='/api/train')
 app.register_blueprint(trade_bp, url_prefix='/api')
+app.register_blueprint(portfolio_bp, url_prefix='/api/portfolio')
+app.register_blueprint(backtest_bp, url_prefix='/api/backtest')
 
 
 # ============================================
@@ -107,20 +109,20 @@ if __name__ == '__main__':
     debug = os.environ.get('DEBUG', 'False').lower() == 'true'
     
     print("=" * 50)
-    print(f"🚀 Starting ML Service on port {port}")
-    print(f"📍 Health check: http://localhost:{port}/health")
-    print(f"📍 API Docs: http://localhost:{port}/api")
+    print(f"Starting ML Service on port {port}")
+    print(f"Health check: http://localhost:{port}/health")
+    print(f"API Docs: http://localhost:{port}/api")
     print("=" * 50)
     
     # Load active PPO model on startup
-    print("\n🔄 Loading active model...")
+    print("\nLoading active model...")
     if load_active_model():
-        print("✅ Model loaded successfully")
+        print("Model loaded successfully")
     else:
-        print("⚠️  No trained model found - train a model first")
+        print("No trained model found - train a model first")
     
     print("\n" + "=" * 50)
-    print("🎯 Available Endpoints:")
+    print("Available Endpoints:")
     print("  POST /api/predict - Get portfolio recommendations")
     print("  POST /api/train/multi-stock - Start training")
     print("  GET  /api/train/status/<id> - Training status")

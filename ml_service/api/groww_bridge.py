@@ -51,7 +51,7 @@ def execute_groww_trade(ticker, trade_type, quantity):
     quantity: int
     """
     if DRY_RUN:
-        logger.info(f"🧪 [DRY RUN] Would execute {trade_type} of {quantity} shares of {ticker} on Groww")
+        logger.info(f" [DRY RUN] Would execute {trade_type} of {quantity} shares of {ticker} on Groww")
         return True, "DRY_RUN_SUCCESS"
 
     try:
@@ -59,7 +59,7 @@ def execute_groww_trade(ticker, trade_type, quantity):
         if not groww:
             return False, "Authentication Failed"
 
-        logger.info(f"🚀 Executing REAL {trade_type} for {ticker}...")
+        logger.info(f" Executing REAL {trade_type} for {ticker}...")
         
         # Strip .NS for Groww
         symbol = ticker.split('.')[0]
@@ -76,11 +76,11 @@ def execute_groww_trade(ticker, trade_type, quantity):
             transaction_type=groww.TRANSACTION_TYPE_BUY if trade_type.upper() == "BUY" else groww.TRANSACTION_TYPE_SELL
         )
         
-        logger.info(f"✅ Order placed successfully: {order}")
+        logger.info(f" Order placed successfully: {order}")
         return True, str(order)
         
     except Exception as e:
-        logger.error(f"❌ Groww Trade Failed: {str(e)}")
+        logger.error(f" Groww Trade Failed: {str(e)}")
         return False, str(e)
 
 @trade_bp.route('/trade', methods=['POST'])

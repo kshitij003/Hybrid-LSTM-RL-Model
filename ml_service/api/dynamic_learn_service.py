@@ -19,7 +19,7 @@ training_status = {}
 def train_new_ticker_task(ticker):
     try:
         training_status[ticker] = "DOWNLOADING_DATA"
-        print(f"📥 Downloading data for {ticker}...")
+        print(f" Downloading data for {ticker}...")
         
         # 1. Fetch data from yfinance
         df = yf.download(ticker, period="2y", interval="1d")
@@ -47,11 +47,11 @@ def train_new_ticker_task(ticker):
         )
         
         training_status[ticker] = "COMPLETED"
-        print(f"✅ Dynamic training for {ticker} complete!")
+        print(f" Dynamic training for {ticker} complete!")
         
     except Exception as e:
         training_status[ticker] = f"FAILED: {str(e)}"
-        print(f"❌ Dynamic training for {ticker} failed: {e}")
+        print(f" Dynamic training for {ticker} failed: {e}")
 
 @dynamic_learn_bp.route('/add-stock', methods=['POST'])
 def add_stock():

@@ -25,10 +25,10 @@ class SimpleBacktester:
         """Load trained PPO model"""
         try:
             self.model = PPO.load(self.model_path)
-            print(f"✅ Model loaded from: {self.model_path}")
+            print(f" Model loaded from: {self.model_path}")
             return True
         except Exception as e:
-            print(f"❌ Failed to load model: {e}")
+            print(f" Failed to load model: {e}")
             return False
     
     def fetch_backtest_data(self, start_date: str, end_date: str):
@@ -39,7 +39,7 @@ class SimpleBacktester:
             start_date: Format 'YYYY-MM-DD'
             end_date: Format 'YYYY-MM-DD'
         """
-        print(f"\n📊 Fetching data from {start_date} to {end_date}...")
+        print(f"\n Fetching data from {start_date} to {end_date}...")
         
         stock_data = {}
         
@@ -54,7 +54,7 @@ class SimpleBacktester:
                 print(f"   {ticker}: {len(df)} days")
                 
             except Exception as e:
-                print(f"   ❌ Failed to fetch {ticker}: {e}")
+                print(f"    Failed to fetch {ticker}: {e}")
         
         return stock_data
     
@@ -65,7 +65,7 @@ class SimpleBacktester:
         Returns:
             dict: Performance metrics
         """
-        print(f"\n🤖 Running backtest...")
+        print(f"\n Running backtest...")
         
         # Create environment
         env = MultiStockPortfolioEnv(
@@ -146,23 +146,23 @@ class SimpleBacktester:
     def print_results(self, results: dict):
         """Print backtest results"""
         print(f"\n{'='*70}")
-        print(f"📊 BACKTEST RESULTS")
+        print(f" BACKTEST RESULTS")
         print(f"{'='*70}")
-        print(f"\n💰 Returns:")
+        print(f"\n Returns:")
         print(f"   Initial Balance: ${results['initial_balance']:,.2f}")
         print(f"   Final Value: ${results['final_value']:,.2f}")
         print(f"   Total Return: {results['total_return']:.2f}%")
-        print(f"\n📈 Comparison:")
+        print(f"\n Comparison:")
         print(f"   Buy & Hold Return: {results['baseline_return']:.2f}%")
         print(f"   Alpha (Excess Return): {results['alpha']:.2f}%")
-        print(f"\n⚖️ Risk Metrics:")
+        print(f"\n Risk Metrics:")
         print(f"   Sharpe Ratio: {results['sharpe_ratio']:.2f}")
         print(f"   Max Drawdown: {results['max_drawdown']:.2f}%")
-        print(f"\n🎯 Performance:")
+        print(f"\n Performance:")
         if results['alpha'] > 0:
-            print(f"   ✅ BEAT THE MARKET by {results['alpha']:.2f}%!")
+            print(f"    BEAT THE MARKET by {results['alpha']:.2f}%!")
         else:
-            print(f"   ❌ Underperformed by {abs(results['alpha']):.2f}%")
+            print(f"    Underperformed by {abs(results['alpha']):.2f}%")
         print(f"\n{'='*70}\n")
     
     def plot_results(self, results: dict):
@@ -189,7 +189,7 @@ class SimpleBacktester:
         
         filename = f"backtest_plot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
         plt.savefig(filename, dpi=150, bbox_inches='tight')
-        print(f"📊 Chart saved to: {filename}")
+        print(f" Chart saved to: {filename}")
         
         plt.show()
 
@@ -199,7 +199,7 @@ def run_simple_backtest():
     Quick backtest example
     """
     print(f"\n{'='*70}")
-    print(f"🚀 STARTING BACKTEST")
+    print(f" STARTING BACKTEST")
     print(f"{'='*70}\n")
     
     # Configuration
@@ -216,14 +216,14 @@ def run_simple_backtest():
     
     # Load model
     if not backtester.load_model():
-        print("❌ Cannot run backtest without model")
+        print(" Cannot run backtest without model")
         return
     
     # Fetch data
     stock_data = backtester.fetch_backtest_data(start_date, end_date)
     
     if not stock_data:
-        print("❌ No data fetched")
+        print(" No data fetched")
         return
     
     # Run backtest

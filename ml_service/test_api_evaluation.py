@@ -72,7 +72,7 @@ def get_portfolio_recommendation(current_cash, current_holdings, stock_data, cur
 
 def fetch_market_data():
     """Fetch historical market data"""
-    print("📊 Fetching 500 days of market data...")
+    print(" Fetching 500 days of market data...")
     end_date = datetime.now()
     start_date = end_date - timedelta(days=700)
     
@@ -81,9 +81,9 @@ def fetch_market_data():
         try:
             df = yf.download(ticker, start=start_date, end=end_date, progress=False, auto_adjust=True)
             stock_data[ticker] = df
-            print(f"   ✅ {ticker}: {len(df)} days")
+            print(f"    {ticker}: {len(df)} days")
         except Exception as e:
-            print(f"   ❌ {ticker}: Failed")
+            print(f"    {ticker}: Failed")
             return None
     
     return stock_data
@@ -92,10 +92,10 @@ def fetch_market_data():
 def simulate_trading(stock_data):
     """Simulate 500-day trading using API recommendations"""
     print(f"\n{'='*75}")
-    print(f"🤖 RUNNING 500-DAY API-BASED SIMULATION")
+    print(f" RUNNING 500-DAY API-BASED SIMULATION")
     print(f"{'='*75}\n")
-    print(f"💰 Starting Capital: ${INITIAL_BALANCE:,.2f}")
-    print(f"📈 Stocks: {', '.join(STOCKS)}\n")
+    print(f" Starting Capital: ${INITIAL_BALANCE:,.2f}")
+    print(f" Stocks: {', '.join(STOCKS)}\n")
     
     # Get trading days (intersection of all stocks)
     trading_days = stock_data[STOCKS[0]].index
@@ -126,7 +126,7 @@ def simulate_trading(stock_data):
         recommendation = get_portfolio_recommendation(cash, holdings_value_dict, stock_data, current_date)
         
         if not recommendation or 'error' in recommendation:
-            print(f"\n⚠️  API call failed at day {day_idx+1}")
+            print(f"\n  API call failed at day {day_idx+1}")
             break
         
         # Calculate current portfolio value
@@ -192,7 +192,7 @@ def simulate_trading(stock_data):
 def analyze_results(portfolio_values, daily_returns):
     """Analyze and display results"""
     print(f"\n{'='*75}")
-    print(f"📊 FINAL RESULTS")
+    print(f" FINAL RESULTS")
     print(f"{'='*75}\n")
     
     initial = INITIAL_BALANCE
@@ -200,7 +200,7 @@ def analyze_results(portfolio_values, daily_returns):
     profit = final - initial
     return_pct = (profit / initial) * 100
     
-    print(f"💰 Financial Performance:")
+    print(f" Financial Performance:")
     print(f"   Starting Capital:  ${initial:,.2f}")
     print(f"   Final Portfolio:   ${final:,.2f}")
     print(f"   Total Profit/Loss: ${profit:+,.2f}")
@@ -222,7 +222,7 @@ def analyze_results(portfolio_values, daily_returns):
         win_days = np.sum(returns > 0)
         win_rate = (win_days / len(returns)) * 100
         
-        print(f"📈 Risk & Performance:")
+        print(f" Risk & Performance:")
         print(f"   Sharpe Ratio:      {sharpe:.2f}")
         print(f"   Max Drawdown:      {max_drawdown:.2f}%")
         print(f"   Win Rate:          {win_rate:.1f}%")
@@ -231,21 +231,21 @@ def analyze_results(portfolio_values, daily_returns):
         # Assessment
         print(f"{'='*75}")
         if return_pct > 10:
-            print("🎉 EXCELLENT! System generated strong profits!")
+            print(" EXCELLENT! System generated strong profits!")
             grade = "A"
         elif return_pct > 5:
-            print("✅ GOOD! System beat typical market returns!")
+            print(" GOOD! System beat typical market returns!")
             grade = "B"
         elif return_pct > 0:
-            print("⚠️  PROFITABLE but modest returns")
+            print("  PROFITABLE but modest returns")
             grade = "C"
         else:
-            print("❌ LOSS - System needs optimization")
+            print(" LOSS - System needs optimization")
             grade = "F"
         print(f"{'='*75}\n")
         
         # Plot
-        print("📊 Generating chart...")
+        print(" Generating chart...")
         fig, ax = plt.subplots(figsize=(12, 6))
         days = list(range(len(portfolio_values)))
         
@@ -266,29 +266,29 @@ def analyze_results(portfolio_values, daily_returns):
         
         filename = f"api_test_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
         plt.savefig(filename, dpi=150, bbox_inches='tight')
-        print(f"✅ Chart saved: {filename}\n")
+        print(f" Chart saved: {filename}\n")
         
-        print(f"🎯 SUMMARY: ${initial:,.2f} → ${final:,.2f} ({return_pct:+.2f}%) | Sharpe: {sharpe:.2f}\n")
+        print(f" SUMMARY: ${initial:,.2f} → ${final:,.2f} ({return_pct:+.2f}%) | Sharpe: {sharpe:.2f}\n")
 
 
 def main():
     print(f"\n{'='*75}")
-    print(f"🚀 API-BASED 500-DAY EVALUATION")
+    print(f" API-BASED 500-DAY EVALUATION")
     print(f"   Using Flask API /api/predict endpoint")
     print(f"{'='*75}\n")
     
     # Step 1: Check API health
-    print("🔍 Checking API status...")
+    print(" Checking API status...")
     if not test_api_health():
-        print("❌ API is not running!")
+        print(" API is not running!")
         print("   Please start the Flask app: python app.py")
         return
-    print("✅ API is running\n")
+    print(" API is running\n")
     
     # Step 2: Fetch market data
     stock_data = fetch_market_data()
     if not stock_data:
-        print("❌ Failed to fetch market data")
+        print(" Failed to fetch market data")
         return
     
     # Step 3: Simulate trading

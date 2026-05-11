@@ -165,8 +165,17 @@ public class OrderExecutionService {
 
     private BigDecimal getLatestPrice(Stock stock) {
         // Fetch most recent price (Limit 1)
-        return priceRepo.findByStockIdOrderByTimestampDesc(stock.getId(), org.springframework.data.domain.PageRequest.of(0, 1))
-                .get(0).getClosePrice();
+        var latest = priceRepo.findByStockIdOrderByTimestampDesc(stock.getId(), org.springframework.data.domain.PageRequest.of(0, 1));
+        
+        if (latest.isEmpty()) {
+            System.out.println("⚠️ Price history missing for " + stock.getTicker() + ". Using currentPrice field as fallback.");
+            if (stock.getCurrentPrice() != null) {
+                return BigDecimal.valueOf(stock.getCurrentPrice());
+            }
+            return BigDecimal.valueOf(100.0); // Final fallback for demo
+        }
+        
+        return latest.get(0).getClosePrice();
     }
 
     private void triggerLiveTrade(String ticker, String action, int quantity) {

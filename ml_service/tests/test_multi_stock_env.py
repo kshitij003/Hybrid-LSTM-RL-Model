@@ -57,7 +57,7 @@ def test_environment_initialization():
         initial_balance=10000.0
     )
     
-    print(f"✅ Environment created successfully")
+    print(f" Environment created successfully")
     print(f"   Stocks: {env.stock_tickers}")
     print(f"   Action space: {env.action_space}")
     print(f"   Observation space: {env.observation_space}")
@@ -73,14 +73,14 @@ def test_reset_and_observation(env):
     
     obs, info = env.reset()
     
-    print(f"✅ Environment reset successfully")
+    print(f" Environment reset successfully")
     print(f"   Observation shape: {obs.shape}")
     print(f"   Expected shape: {env.observation_space.shape}")
     print(f"   Initial portfolio value: ${env.portfolio_value:,.2f}")
     print(f"   Initial cash: ${env.cash:,.2f}")
     
     assert obs.shape == env.observation_space.shape, "Observation shape mismatch!"
-    print(f"✅ Observation shape matches expected")
+    print(f" Observation shape matches expected")
     
     return obs
 
@@ -113,7 +113,7 @@ def test_random_actions(env, num_steps=10):
             print(f"\n Episode ended at step {step}")
             break
     
-    print(f"\n✅ Completed {step + 1} steps successfully")
+    print(f"\n Completed {step + 1} steps successfully")
     return info
 
 
@@ -143,7 +143,7 @@ def test_specific_strategy(env):
         if terminated or truncated:
             break
     
-    print(f"\n✅ Strategy executed successfully")
+    print(f"\n Strategy executed successfully")
     print(f"   Final return: {total_return:+.2%}")
 
 
@@ -175,7 +175,7 @@ def test_with_lstm_predictor(env):
     
     obs, info = env_with_lstm.reset()
     
-    print(f"✅ Environment with LSTM created")
+    print(f" Environment with LSTM created")
     print(f"   Observation shape: {obs.shape}")
     print(f"   (Includes LSTM latent states)")
     
@@ -185,7 +185,7 @@ def test_with_lstm_predictor(env):
         action = action / np.sum(action)
         obs, reward, terminated, truncated, info = env_with_lstm.step(action)
     
-    print(f"✅ Successfully ran with LSTM predictor")
+    print(f" Successfully ran with LSTM predictor")
 
 
 def run_all_tests():
@@ -211,13 +211,13 @@ def run_all_tests():
         test_with_lstm_predictor(env)
         
         print("\n" + "="*70)
-        print("✅ ALL TESTS PASSED SUCCESSFULLY!")
+        print(" ALL TESTS PASSED SUCCESSFULLY!")
         print("="*70)
-        print("\nYour multi-stock environment is working correctly! 🎉")
+        print("\nYour multi-stock environment is working correctly! ")
         print("Next: Train LSTM models and PPO agent")
         
     except Exception as e:
-        print(f"\n❌ TEST FAILED: {e}")
+        print(f"\n TEST FAILED: {e}")
         import traceback
         traceback.print_exc()
 

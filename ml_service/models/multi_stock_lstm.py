@@ -47,9 +47,9 @@ class MultiStockLSTMPredictor:
                     hidden_dim=hidden_dim,
                     num_layers=num_layers
                 )
-                print(f"✅ Loaded LSTM model for {ticker}")
+                print(f" Loaded LSTM model for {ticker}")
             else:
-                print(f"⚠️  Model not found for {ticker}: {model_path}")
+                print(f"  Model not found for {ticker}: {model_path}")
                 # Create dummy predictor for testing
                 self.predictors[ticker] = None
     
@@ -211,9 +211,9 @@ def train_multi_stock_lstm(
             )
             
             model_paths[ticker] = model_path
-            print(f"✅ Successfully trained LSTM for {ticker}")
+            print(f" Successfully trained LSTM for {ticker}")
             
         except Exception as e:
-            print(f"❌ Failed to train LSTM for {ticker}: {e}")
+            print(f" Failed to train LSTM for {ticker}: {e}")
     
     return model_paths

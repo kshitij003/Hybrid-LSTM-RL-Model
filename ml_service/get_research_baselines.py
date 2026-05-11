@@ -18,15 +18,15 @@ def fetch_stock_data(ticker, start, end):
             df = yf.download(ticker, start=start, end=end, progress=False, auto_adjust=True)
             if not df.empty and len(df) > 100:
                 return df
-            print(f"   ⚠️  {ticker}: Empty data (Attempt {attempt+1}/3)")
+            print(f"     {ticker}: Empty data (Attempt {attempt+1}/3)")
         except Exception as e:
-            print(f"   ⚠️  {ticker}: Error (Attempt {attempt+1}/3)")
-    print(f"   ❌ {ticker}: Failed after 3 attempts")
+            print(f"     {ticker}: Error (Attempt {attempt+1}/3)")
+    print(f"    {ticker}: Failed after 3 attempts")
     return None
 
 def get_baseline_results():
     print(f"\n{'='*60}")
-    print(f"📊 CALCULATING RESEARCH BASELINES (LAST 500 TRADING DAYS)")
+    print(f" CALCULATING RESEARCH BASELINES (LAST 500 TRADING DAYS)")
     print(f"{'='*60}\n")
     
     end_date = datetime.now()
@@ -51,7 +51,7 @@ def get_baseline_results():
         data[ticker] = data[ticker].loc[common_days]
     
     # 2. Calculate Equally Weighted Buy & Hold (Our Stocks)
-    print("📈 Strategy 1: Equally Weighted Buy & Hold (Our 5 Stocks)")
+    print(" Strategy 1: Equally Weighted Buy & Hold (Our 5 Stocks)")
     portfolio_value = 0
     per_stock_cash = INITIAL_BALANCE / len(STOCKS)
     
@@ -71,7 +71,7 @@ def get_baseline_results():
     print(f"\n   Total B&H Portfolio: ${portfolio_value:,.2f} ({bh_return:+.2f}%)")
     
     # 3. Calculate S&P 500 Performance
-    print(f"\n📉 Strategy 2: S&P 500 Index (^GSPC)")
+    print(f"\n Strategy 2: S&P 500 Index (^GSPC)")
     sp_df = data[BENCHMARK]
     sp_start = sp_df['Close'].iloc[0]
     sp_end = sp_df['Close'].iloc[-1]
@@ -80,7 +80,7 @@ def get_baseline_results():
     
     # 4. Final Comparison for Research Paper
     print(f"\n{'='*60}")
-    print(f"🔬 RESEARCH PAPER COMPARISON TABLE")
+    print(f" RESEARCH PAPER COMPARISON TABLE")
     print(f"{'='*60}")
     print(f"{'Metric':25} | {'RL Agent':15} | {'Buy & Hold':15} | {'S&P 500':15}")
     print("-" * 75)

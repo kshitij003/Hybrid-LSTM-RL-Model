@@ -6,6 +6,7 @@ import java.util.List;
 
 @Entity
 @Table(name = "stocks")
+@ToString
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
@@ -22,10 +23,14 @@ public class Stock {
 
     private String companyName;
     private String sector;
+    @Builder.Default
+    private Double currentPrice = 100.0; // Default fallback for demo
 
+    @ToString.Exclude
     @OneToMany(mappedBy = "stock", cascade = CascadeType.ALL)
     private List<StockPrice> priceHistory;
 
+    @ToString.Exclude
     @OneToMany(mappedBy = "stock")
     private List<MarketNews> news;
 }

@@ -64,12 +64,31 @@ def load_active_model() -> bool:
         if os.path.exists(ppo_path + ".zip"):
             active_model         = PPO.load(ppo_path)
             active_model_version = model_id
-            print(f"✅ Loaded PPO model: {ppo_path}")
+            
+            # Load metadata to get stock universe
+            from api.models import get_model_metadata
+            meta = get_model_metadata(model_id)
+            if meta and "stocks" in meta:
+                global active_tickers
+                active_tickers = meta["stocks"]
+                print(f"  Model metadata found. Active tickers: {active_tickers}")
+            else:
+                # Infer num stocks from observation space
+                obs_shape = active_model.observation_space.shape[0]
+                inferred_n = (obs_shape - 11) // 52
+                print(f"  No metadata. Inferred num_stocks: {inferred_n} (obs_dim={obs_shape})")
+                # Fallback to default if N=5
+                if inferred_n == 5:
+                    active_tickers = ["HDFCBANK.NS", "ICICIBANK.NS", "INFY.NS", "RELIANCE.NS", "TCS.NS"]
+                else:
+                    active_tickers = [] # Will be handled in predict()
+            
+            print(f" Loaded PPO model: {ppo_path}")
         else:
-            print(f"⚠️  No PPO model at {ppo_path}")
+            print(f"  No PPO model at {ppo_path}")
             return False
     except Exception as e:
-        print(f"❌ Error loading PPO model: {e}")
+        print(f" Error loading PPO model: {e}")
         return False
 
     # ── 2. Per-stock LSTM models ─────────────────────────────────────────────
@@ -83,7 +102,7 @@ def load_active_model() -> bool:
         for ticker in STOCKS:
             path = os.path.join(MODEL_DIR, f"lstm_{ticker}.pth")
             if not os.path.exists(path):
-                print(f"   ⚠️  LSTM model not found for {ticker}: {path}")
+                print(f"     LSTM model not found for {ticker}: {path}")
                 lstm_predictors[ticker] = None
                 continue
 
@@ -97,10 +116,10 @@ def load_active_model() -> bool:
                 hidden_dim = LSTM_HIDDEN_DIM,
                 num_layers = LSTM_NUM_LAYERS,
             )
-            print(f"   ✅ Loaded LSTM for {ticker}  (input_dim={input_dim})")
+            print(f"    Loaded LSTM for {ticker}  (input_dim={input_dim})")
 
     except Exception as e:
-        print(f"⚠️  Could not load LSTM models: {e}. Will fall back to zeros.")
+        print(f"  Could not load LSTM models: {e}. Will fall back to zeros.")
         lstm_predictors = {}
         lstm_input_dims = {}
 
@@ -151,7 +170,7 @@ def _fetch_market_data_from_yfinance(tickers: List[str], seq_len: int = None) ->
             )
 
             if df.empty:
-                print(f"   ⚠️  yfinance returned empty data for {ticker}")
+                print(f"     yfinance returned empty data for {ticker}")
                 market_data[ticker] = []
                 continue
 
@@ -172,10 +191,10 @@ def _fetch_market_data_from_yfinance(tickers: List[str], seq_len: int = None) ->
                 })
 
             market_data[ticker] = rows
-            print(f"   ✅ yfinance: {len(rows)} days fetched for {ticker}")
+            print(f"    yfinance: {len(rows)} days fetched for {ticker}")
 
         except Exception as e:
-            print(f"   ❌ yfinance fetch failed for {ticker}: {e}")
+            print(f"    yfinance fetch failed for {ticker}: {e}")
             market_data[ticker] = []
 
     return market_data
@@ -280,7 +299,7 @@ def predict():
                                       "message": "No active model loaded. Train one first."}}), 503
 
         # ── Step 1: Fetch last LSTM_SEQ_LEN trading days from yfinance ─────────
-        print(f"📊 Fetching {LSTM_SEQ_LEN} days of market data for: {tickers}")
+        print(f" Fetching {LSTM_SEQ_LEN} days of market data for: {tickers}")
         market_data = _fetch_market_data_from_yfinance(tickers, seq_len=LSTM_SEQ_LEN)
 
         # Check that at least some data came back
@@ -290,45 +309,54 @@ def predict():
                                       "message": "yfinance returned no data for any ticker. "
                                                  "Check ticker symbols and internet connectivity."}}), 502
         if empty_tickers:
-            print(f"   ⚠️  No data for: {empty_tickers} — they will be excluded from observation.")
+            print(f"     No data for: {empty_tickers} — they will be excluded from observation.")
             for t in empty_tickers:
                 del market_data[t]
 
         # ── Step 2: Attach FinBERT sentiment to each day ───────────────────
-        print("📰 Fetching news sentiment via FinBERT...")
+        print(" Fetching news sentiment via FinBERT...")
         market_data = _attach_sentiment_to_market_data(market_data)
 
         # ── Step 3: Build observation and run PPO inference ────────────────
+        # Detect model expected num_stocks
+        obs_shape = active_model.observation_space.shape[0]
+        model_n = (obs_shape - 11) // 52
+        
+        # Determine the stock order the model expects
+        if active_tickers:
+            trained_order = active_tickers
+        else:
+            # Last resort: assume the user is passing exactly the stocks the model expects
+            # and sort them alphabetically (which is how MultiStockEnv does it)
+            if len(tickers) == model_n:
+                trained_order = sorted(tickers)
+            else:
+                return jsonify({"error": {"code": "SHAPE_MISMATCH", 
+                                          "message": f"Model expects {model_n} stocks, but you provided {len(tickers)}. "
+                                                     "Please provide the exact stocks used during training."}}), 400
+
         internal_data = {
             'currentCash'    : float(data['currentCash']),
             'currentHoldings': data['currentHoldings'],
             'marketData'     : market_data,
+            'trained_order'  : trained_order,
+            'model_n'        : model_n
         }
 
         observation    = prepare_observation(internal_data)
         action, _      = active_model.predict(observation, deterministic=True)
         
         # Only take the relevant parts of the action vector
-        # (the indices matching our active tickers + the final cash slot)
-        trained_order = ["HDFCBANK.NS", "ICICIBANK.NS", "INFY.NS", "RELIANCE.NS", "TCS.NS"]
-        stock_tickers  = sorted(market_data.keys())
-        
-        active_indices = [i for i, t in enumerate(trained_order) if t in market_data]
-        
-        # Action vector is [stock0, stock1, stock2, stock3, stock4, cash]
-        relevant_actions = np.concatenate([
-            action[active_indices],        # The stocks we actually provided
-            [action[MAX_STOCKS]]           # The cash slot (always at the end)
-        ])
-        
-        weights = normalize_weights(relevant_actions)
+        # Action vector is [stock0, stock1, ..., stockN, cash]
+        stock_tickers  = trained_order
+        weights = normalize_weights(action)
         
         target_weights = {t: float(weights[i]) for i, t in enumerate(stock_tickers)}
-        target_weights['CASH'] = float(weights[-1])
+        target_weights['CASH'] = float(weights[model_n])
 
         confidence     = calculate_confidence(weights, observation)
         total_value    = float(data['currentCash']) + sum(
-            float(v) for v in data['currentHoldings'].values()
+            float(v or 0.0) for v in data['currentHoldings'].values()
         )
 
         return jsonify({
@@ -454,7 +482,7 @@ def _compute_lstm_state(ticker: str, ticker_data: list) -> np.ndarray:
         return predictor.get_latent_state(matrix)
 
     except Exception as e:
-        print(f"⚠️  LSTM inference failed for {ticker}: {e}")
+        print(f"  LSTM inference failed for {ticker}: {e}")
         return np.zeros(LSTM_HIDDEN_DIM, dtype=np.float32)
 
 
@@ -497,20 +525,19 @@ def prepare_observation(request_data: dict) -> np.ndarray:
     current_cash     = float(request_data['currentCash'])
     current_holdings = request_data['currentHoldings']
     market_data      = request_data['marketData']
+    trained_order    = request_data['trained_order']
+    model_n          = request_data['model_n']
 
     input_tickers = sorted(market_data.keys())
     num_input_stocks = len(input_tickers)
     
-    total_value   = current_cash + sum(current_holdings.values())
+    total_value   = current_cash + sum(float(v or 0.0) for v in current_holdings.values())
     initial_balance = 10000.0   # Matches training baseline
 
-    # ── 1. LSTM latent states (Padded to MAX_STOCKS) ─────────────────────────
+    # ── 1. LSTM latent states (Padded to model_n) ─────────────────────────
     # We must align tickers with their trained slots:
-    # 0: HDFCBANK, 1: ICICIBANK, 2: INFY, 3: RELIANCE, 4: TCS
-    trained_order = ["HDFCBANK.NS", "ICICIBANK.NS", "INFY.NS", "RELIANCE.NS", "TCS.NS"]
-    
     lstm_parts = []
-    for i in range(MAX_STOCKS):
+    for i in range(model_n):
         ticker = trained_order[i]
         if ticker in market_data:
             state = _compute_lstm_state(ticker, market_data[ticker])
@@ -522,7 +549,7 @@ def prepare_observation(request_data: dict) -> np.ndarray:
 
     # ── 2. Normalised current prices (Aligned with trained_order) ────────────
     normalized_prices_list = []
-    for i in range(MAX_STOCKS):
+    for i in range(model_n):
         ticker = trained_order[i]
         if ticker in market_data:
             rows = market_data[ticker]
@@ -535,7 +562,7 @@ def prepare_observation(request_data: dict) -> np.ndarray:
 
     # ── 3. Portfolio weights (Aligned with trained_order + 1 cash) ───────────
     weights_list = []
-    for i in range(MAX_STOCKS):
+    for i in range(model_n):
         ticker = trained_order[i]
         if ticker in market_data:
             v = float(current_holdings.get(ticker, 0.0))
@@ -599,10 +626,14 @@ def calculate_confidence(weights: np.ndarray, observation: np.ndarray) -> float:
 
 @inference_bp.route('/health', methods=['GET'])
 def health():
+    obs_shape = active_model.observation_space.shape[0] if active_model else 0
+    model_n = (obs_shape - 11) // 52 if obs_shape > 11 else 0
     return jsonify({
         "status"      : "healthy",
         "modelLoaded" : active_model is not None,
         "modelVersion": active_model_version,
+        "numStocks"   : model_n,
+        "activeTickers": active_tickers,
         "lstmLoaded"  : {t: (lstm_predictors.get(t) is not None) for t in STOCKS},
         "lstmInputDims": lstm_input_dims,
     }), 200

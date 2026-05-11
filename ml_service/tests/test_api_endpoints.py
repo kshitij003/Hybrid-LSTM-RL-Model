@@ -25,7 +25,7 @@ def test_health():
     print(f"Response: {json.dumps(response.json(), indent=2)}")
     
     assert response.status_code == 200
-    print("✅ Health check passed")
+    print(" Health check passed")
 
 
 def test_inference_health():
@@ -36,7 +36,7 @@ def test_inference_health():
     print(f"Status: {response.status_code}")
     print(f"Response: {json.dumps(response.json(), indent=2)}")
     
-    print("✅ Inference health check passed")
+    print(" Inference health check passed")
 
 
 def test_list_models():
@@ -47,7 +47,7 @@ def test_list_models():
     print(f"Status: {response.status_code}")
     print(f"Response: {json.dumps(response.json(), indent=2)}")
     
-    print("✅ Model listing passed")
+    print(" Model listing passed")
 
 
 def test_predict_endpoint():
@@ -88,9 +88,9 @@ def test_predict_endpoint():
     
     if response.status_code == 200:
         print(f"Response: {json.dumps(response.json(), indent=2)}")
-        print("✅ Prediction endpoint passed")
+        print(" Prediction endpoint passed")
     elif response.status_code == 503:
-        print("⚠️  No trained model available (expected)")
+        print("  No trained model available (expected)")
         print(f"Response: {json.dumps(response.json(), indent=2)}")
     else:
         print(f"Response: {response.text}")
@@ -104,7 +104,7 @@ def test_training_list():
     print(f"Status: {response.status_code}")
     print(f"Response: {json.dumps(response.json(), indent=2)}")
     
-    print("✅ Training list passed")
+    print(" Training list passed")
 
 
 def run_all_tests():
@@ -121,19 +121,19 @@ def run_all_tests():
         test_training_list()
         
         print("\n" + "=" * 70)
-        print("✅ ALL API TESTS COMPLETED!")
+        print(" ALL API TESTS COMPLETED!")
         print("=" * 70)
-        print("\n🎉 Your Flask API is working correctly!")
+        print("\n Your Flask API is working correctly!")
         print("\nNext: Test from Spring Boot backend")
     
     except requests.exceptions.ConnectionError:
-        print("\n❌ Could not connect to Flask server")
+        print("\n Could not connect to Flask server")
         print("Make sure to start the server first:")
         print("  cd ml_service")
         print("  python app.py")
     
     except Exception as e:
-        print(f"\n❌ Test failed: {e}")
+        print(f"\n Test failed: {e}")
         import traceback
         traceback.print_exc()
 

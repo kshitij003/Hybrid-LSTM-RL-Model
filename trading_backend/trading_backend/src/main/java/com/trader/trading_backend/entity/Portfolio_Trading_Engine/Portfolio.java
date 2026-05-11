@@ -9,7 +9,9 @@ import java.util.List;
 
 @Entity
 @Table(name = "portfolios")
-@Data
+@Getter
+@Setter
+@ToString
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
@@ -31,13 +33,17 @@ public class Portfolio {
     @Column(precision = 19, scale = 4)
     private BigDecimal totalPortfolioValue;
 
+    @ToString.Exclude
+    @com.fasterxml.jackson.annotation.JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
+    @ToString.Exclude
     @OneToMany(mappedBy = "portfolio", cascade = CascadeType.ALL)
     private List<Holding> holdings;
 
+    @ToString.Exclude
     @OneToMany(mappedBy = "portfolio", cascade = CascadeType.ALL)
     private List<Transaction> transactions;
 

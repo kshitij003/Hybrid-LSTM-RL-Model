@@ -26,7 +26,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/ml")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "${allowed.origin:http://localhost:3000}")
+@CrossOrigin(origins = "${allowed.origin:http://localhost:5173}")
 public class MLController {
 
     private final RestTemplate restTemplate = new RestTemplate();
@@ -162,6 +162,66 @@ public class MLController {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    //  GET /api/ml/portfolio/preferences
+    //  Get saved stock preferences.
+    // ─────────────────────────────────────────────────────────────────────────
+    @GetMapping("/portfolio/preferences")
+    public ResponseEntity<Map> getPortfolioPreferences() {
+        try {
+            ResponseEntity<Map> response = restTemplate.getForEntity(
+                    mlServiceUrl + "/api/portfolio/preferences", Map.class);
+            return ResponseEntity.ok(response.getBody());
+        } catch (Exception e) {
+            return ResponseEntity.status(502).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  POST /api/ml/portfolio/preferences
+    //  Save stock preferences.
+    // ─────────────────────────────────────────────────────────────────────────
+    @PostMapping("/portfolio/preferences")
+    public ResponseEntity<Map> savePortfolioPreferences(@RequestBody Map<String, Object> body) {
+        try {
+            ResponseEntity<Map> response = restTemplate.postForEntity(
+                    mlServiceUrl + "/api/portfolio/preferences", body, Map.class);
+            return ResponseEntity.ok(response.getBody());
+        } catch (Exception e) {
+            return ResponseEntity.status(502).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  GET /api/ml/portfolio/supported-stocks
+    //  Fetch list of supported NSE stocks.
+    // ─────────────────────────────────────────────────────────────────────────
+    @GetMapping("/portfolio/supported-stocks")
+    public ResponseEntity<Map> getSupportedStocks(@RequestParam(required = false) String q) {
+        try {
+            String url = mlServiceUrl + "/api/portfolio/supported-stocks" + (q != null ? "?q=" + q : "");
+            ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
+            return ResponseEntity.ok(response.getBody());
+        } catch (Exception e) {
+            return ResponseEntity.status(502).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  POST /api/ml/portfolio/train-custom
+    //  Trigger training on custom selection.
+    // ─────────────────────────────────────────────────────────────────────────
+    @PostMapping("/portfolio/train-custom")
+    public ResponseEntity<Map> trainCustom(@RequestBody Map<String, Object> body) {
+        try {
+            ResponseEntity<Map> response = restTemplate.postForEntity(
+                    mlServiceUrl + "/api/portfolio/train-custom", body, Map.class);
+            return ResponseEntity.ok(response.getBody());
+        } catch (Exception e) {
+            return ResponseEntity.status(502).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     //  GET /api/ml/training-jobs
     //  List all training jobs (newest first).
     // ─────────────────────────────────────────────────────────────────────────
@@ -174,6 +234,51 @@ public class MLController {
         } catch (Exception e) {
             return ResponseEntity.status(502)
                     .body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  GET /api/ml/news/headlines
+    //  Fetch recent news headlines with sentiment scores.
+    // ─────────────────────────────────────────────────────────────────────────
+    @GetMapping("/news/headlines")
+    public ResponseEntity<Map> getNewsHeadlines() {
+        try {
+            ResponseEntity<Map> response = restTemplate.getForEntity(
+                    mlServiceUrl + "/api/news/headlines", Map.class);
+            return ResponseEntity.ok(response.getBody());
+        } catch (Exception e) {
+            return ResponseEntity.status(502).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  POST /api/ml/backtest/run
+    //  Run a historical backtest on the trained model.
+    // ─────────────────────────────────────────────────────────────────────────
+    @PostMapping("/backtest/run")
+    public ResponseEntity<Map> runBacktest(@RequestBody Map<String, Object> body) {
+        try {
+            ResponseEntity<Map> response = restTemplate.postForEntity(
+                    mlServiceUrl + "/api/backtest/run", body, Map.class);
+            return ResponseEntity.ok(response.getBody());
+        } catch (Exception e) {
+            return ResponseEntity.status(502).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  POST /api/ml/predict
+    //  Get weights/rebalance proposal from the PPO model.
+    // ─────────────────────────────────────────────────────────────────────────
+    @PostMapping("/predict")
+    public ResponseEntity<Map> getPrediction(@RequestBody Map<String, Object> body) {
+        try {
+            ResponseEntity<Map> response = restTemplate.postForEntity(
+                    mlServiceUrl + "/api/predict", body, Map.class);
+            return ResponseEntity.ok(response.getBody());
+        } catch (Exception e) {
+            return ResponseEntity.status(502).body(Map.of("error", e.getMessage()));
         }
     }
 

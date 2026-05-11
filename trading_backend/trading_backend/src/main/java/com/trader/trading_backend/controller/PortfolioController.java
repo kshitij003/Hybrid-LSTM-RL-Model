@@ -17,13 +17,14 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/portfolio")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "http://localhost:3000") // Allow React Frontend
+@CrossOrigin(origins = "http://localhost:5173") // Allow React Frontend (Vite)
 public class PortfolioController {
 
     private final PortfolioService portfolioService;
     private final ModelIntegrationService modelService;
     private final OrderExecutionService executionService;
     private final MarketDataService marketDataService; // For manual sync demo
+    private final com.trader.trading_backend.Repository.Market_Data_Management.StockRepository stockRepo;
 
     // 1. Get Portfolio Summary (For the Dashboard Card)
     @GetMapping("/{id}")
@@ -68,8 +69,15 @@ public class PortfolioController {
     // Useful if data looks stale during a presentation
     @PostMapping("/sync-data")
     public ResponseEntity<String> forceDataSync() {
-        // Hardcoded list or fetch from DB
-        marketDataService.syncstockprices(List.of("AAPL", "GOOGL", "MSFT", "TSLA", "AMZN"));
-        return ResponseEntity.ok("Market Data Synced Successfully.");
+        List<String> tickers = stockRepo.findAll().stream()
+                .map(s -> s.getTicker())
+                .toList();
+        
+        if (tickers.isEmpty()) {
+            tickers = List.of("RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS");
+        }
+        
+        marketDataService.syncstockprices(tickers);
+        return ResponseEntity.ok("Market Data Synced for " + tickers.size() + " assets.");
     }
 }

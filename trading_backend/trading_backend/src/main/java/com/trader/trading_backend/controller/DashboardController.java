@@ -3,7 +3,6 @@ package com.trader.trading_backend.controller;
 import com.trader.trading_backend.dto.DashboardMetricsDTO;
 import com.trader.trading_backend.entity.Portfolio_Trading_Engine.Holding;
 import com.trader.trading_backend.entity.Portfolio_Trading_Engine.Portfolio;
-import com.trader.trading_backend.service.MarketDataService;
 import com.trader.trading_backend.service.PortfolioService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -18,6 +17,7 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/dashboard")
 @RequiredArgsConstructor
+@CrossOrigin(origins = "http://localhost:5173")
 public class DashboardController {
 
     private final PortfolioService portfolioService;

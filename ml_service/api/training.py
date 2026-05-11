@@ -202,7 +202,7 @@ def train_from_database():
 def train_with_db_data(training_id: str, data: dict):
     """Train models using data from PostgreSQL (via Spring Boot)"""
     try:
-        logger.info(f"🗄️  TRAINING WITH POSTGRESQL DATA - ID: {training_id}")
+        logger.info(f"  TRAINING WITH POSTGRESQL DATA - ID: {training_id}")
         logger.debug(f"Stocks: {data['stocks']}")
         logger.debug(f"Date Range: {data['startDate']} to {data['endDate']}")
         
@@ -218,7 +218,7 @@ def train_with_db_data(training_id: str, data: dict):
             training_jobs[training_id]["updatedAt"] = datetime.now().isoformat()
         
         # 1. Convert JSON data to DataFrames
-        logger.info("📊 Step 1: Converting PostgreSQL data to DataFrames...")
+        logger.info(" Step 1: Converting PostgreSQL data to DataFrames...")
         update_progress("DATA_PREPARATION", 5.0)
         
         import pandas as pd
@@ -241,7 +241,7 @@ def train_with_db_data(training_id: str, data: dict):
         update_progress("DATA_LOADED", 10.0)
         
         # 2. Train LSTM models for each stock
-        logger.info("🧠 Step 2: Training LSTM models...")
+        logger.info(" Step 2: Training LSTM models...")
         update_progress("LSTM_TRAINING", 15.0)
         
         lstm_models = {}
@@ -289,10 +289,10 @@ def train_with_db_data(training_id: str, data: dict):
             # Update progress
             progress = 15 + (i + 1) / num_stocks * 25
             update_progress("LSTM_TRAINING", progress)
-            logger.info(f"   ✅ {ticker} LSTM trained and saved")
+            logger.info(f"    {ticker} LSTM trained and saved")
         
         # 3. Train PPO agent
-        logger.info("🤖 Step 3: Training PPO agent...")
+        logger.info(" Step 3: Training PPO agent...")
         update_progress("PPO_TRAINING", 40.0)
         
         from stable_baselines3 import PPO
@@ -319,7 +319,7 @@ def train_with_db_data(training_id: str, data: dict):
             update_progress("PPO_TRAINING", min(progress, 100.0))
         
         # 4. Save models
-        logger.info("💾 Step 4: Saving models...")
+        logger.info(" Step 4: Saving models...")
         save_path = f"models/saved_models/ppo_from_db_{datetime.now().strftime('%Y%m%d')}"
         model.save(save_path)
         
@@ -336,10 +336,10 @@ def train_with_db_data(training_id: str, data: dict):
             "daysOfData": len(next(iter(stock_data.values())))
         }
         
-        logger.info(f"✅ TRAINING COMPLETED SUCCESSFULLY - Model saved to: {save_path}")
+        logger.info(f" TRAINING COMPLETED SUCCESSFULLY - Model saved to: {save_path}")
         
     except Exception as e:
-        logger.error(f"❌ TRAINING FAILED: {e}")
+        logger.error(f" TRAINING FAILED: {e}")
         print(f"Error: {e}")
         print(f"{'='*70}\n")
         import traceback
@@ -596,10 +596,10 @@ def run_quick_update_job(training_id: str, stocks: list, start_date: str, end_da
             path = os.path.join(MODEL_DIR, f"lstm_{ticker}.pth")
             if os.path.exists(path):
                 lstm_model_paths[ticker] = path
-                logger.debug(f"   ✅ Found LSTM for {ticker}")
+                logger.debug(f"    Found LSTM for {ticker}")
             else:
                 missing_lstm.append(ticker)
-                logger.warning(f"   ⚠️  No LSTM found for {ticker} — will use zero state")
+                logger.warning(f"     No LSTM found for {ticker} — will use zero state")
 
         if missing_lstm:
             job['warnings'] = (
@@ -653,7 +653,7 @@ def run_quick_update_job(training_id: str, stocks: list, start_date: str, end_da
 
         # Save — overwrites existing model so inference picks it up immediately
         model.save(ppo_path)
-        logger.info(f"[{training_id}] ✅ Fine-tuned model saved to {ppo_path}.zip")
+        logger.info(f"[{training_id}]  Fine-tuned model saved to {ppo_path}.zip")
 
         # ── Done ─────────────────────────────────────────────────────────────
         job['status']                    = 'COMPLETED'
@@ -679,7 +679,7 @@ def run_quick_update_job(training_id: str, stocks: list, start_date: str, end_da
         job['status']    = 'FAILED'
         job['error']     = str(e)
         job['updatedAt'] = datetime.now().isoformat()
-        logger.error(f"[{training_id}] ❌ Quick-update failed: {e}")
+        logger.error(f"[{training_id}]  Quick-update failed: {e}")
 
 
 def run_training_job(training_id: str, stocks: list, start_date: str, end_date: str, config: dict, save_path: str):
@@ -812,7 +812,20 @@ def run_training_job(training_id: str, stocks: list, start_date: str, end_date: 
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         model.save(save_path)
         
-        logger.info(f"[{training_id}] PPO training complete")
+        # Save metadata so inference knows the stock order and config
+        from api.models import save_model_metadata
+        model_id = os.path.splitext(os.path.basename(save_path))[0]
+        metadata = {
+            "modelId": model_id,
+            "stocks": stocks,
+            "trainedOn": datetime.now().isoformat(),
+            "config": config,
+            "obs_dim": env.observation_space.shape[0],
+            "num_stocks": len(stocks)
+        }
+        save_model_metadata(model_id, metadata)
+        
+        logger.info(f"[{training_id}] PPO training complete and metadata saved")
         
         # Stage 4: Complete
         job['status'] = 'COMPLETED'

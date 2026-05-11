@@ -1,308 +1,265 @@
-"""
-News Fetching and Sentiment Analysis Service
-Fetches real stock news and analyzes sentiment using FinBERT
-"""
-
 from flask import Blueprint, request, jsonify
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import torch
 import requests
 from datetime import datetime, timedelta
 import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 news_bp = Blueprint('news', __name__)
 
-# Load FinBERT model for financial sentiment analysis
-print("📰 Loading FinBERT sentiment analysis model...")
-tokenizer = AutoTokenizer.from_pretrained("ProsusAI/finbert")
-model = AutoModelForSequenceClassification.from_pretrained("ProsusAI/finbert")
-model.eval()
-print("✅ FinBERT model loaded successfully!")
+# Load FinBERT model for sentiment analysis
+# ProsusAI/finbert is the standard for financial sentiment
+MODEL_NAME = "ProsusAI/finbert"
+tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+model = AutoModelForSequenceClassification.from_pretrained(MODEL_NAME)
 
-# News API configuration (using NewsAPI.org - free tier)
-NEWS_API_KEY = os.getenv('NEWS_API_KEY', 'YOUR_API_KEY_HERE')  # Get from newsapi.org
-NEWS_API_URL = "https://newsapi.org/v2/everything"
-
+# API Keys
+NEWS_API_KEY = os.getenv('NEWS_API_KEY', '')
+FINNHUB_API_KEY = os.getenv('FINNHUB_API_KEY', '')
+FINNHUB_URL = "https://finnhub.io/api/v1/company-news"
 
 def analyze_sentiment(text: str) -> dict:
     """
-    Analyze sentiment of text using FinBERT
-    Returns: {
-        'score': float (-1 to 1),
-        'label': 'positive' | 'neutral' | 'negative',
-        'confidence': float (0 to 1)
-    }
+    Analyzes sentiment of text using FinBERT.
+    Returns label and score.
     """
     try:
-        # Tokenize
-        inputs = tokenizer(text, return_tensors="pt", truncation=True, max_length=512, padding=True)
-        
-        # Get prediction
+        inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True, max_length=512)
         with torch.no_grad():
             outputs = model(**inputs)
             predictions = torch.nn.functional.softmax(outputs.logits, dim=-1)
         
-        # FinBERT outputs: [positive, negative, neutral]
+        # FinBERT labels: 0 -> positive, 1 -> negative, 2 -> neutral
         probabilities = predictions[0].tolist()
-        labels = ['positive', 'negative', 'neutral']
+        labels = ["positive", "negative", "neutral"]
+        max_idx = np.argmax(probabilities)
         
-        # Get dominant sentiment
-        max_idx = probabilities.index(max(probabilities))
-        sentiment_label = labels[max_idx]
-        confidence = probabilities[max_idx]
-        
-        # Convert to score: positive=1, neutral=0, negative=-1
-        score_map = {'positive': 1.0, 'neutral': 0.0, 'negative': -1.0}
-        # Weighted score
-        sentiment_score = (
-            probabilities[0] * 1.0 +   # positive
-            probabilities[1] * -1.0 +  # negative  
-            probabilities[2] * 0.0     # neutral
-        )
+        # Calculate a single score: positive - negative
+        sentiment_score = probabilities[0] - probabilities[1]
         
         return {
-            'score': round(sentiment_score, 4),
-            'label': sentiment_label,
-            'confidence': round(confidence, 4),
-            'probabilities': {
-                'positive': round(probabilities[0], 4),
-                'negative': round(probabilities[1], 4),
-                'neutral': round(probabilities[2], 4)
+            "label": labels[max_idx],
+            "score": sentiment_score,
+            "probabilities": {
+                "positive": probabilities[0],
+                "negative": probabilities[1],
+                "neutral": probabilities[2]
             }
         }
-    
     except Exception as e:
-        print(f"❌ Sentiment analysis failed: {e}")
-        return {
-            'score': 0.0,
-            'label': 'neutral',
-            'confidence': 0.0,
-            'error': str(e)
-        }
+        print(f"Error in sentiment analysis: {e}")
+        return {"label": "neutral", "score": 0.0, "probabilities": {}}
 
+import numpy as np
 
-def fetch_news(ticker: str, days: int = 7) -> list:
+def fetch_news_finnhub(ticker: str, days: int = 7) -> list:
     """
-    Fetch news articles for a stock ticker and score them with FinBERT.
-    Args:
-        ticker: Stock symbol e.g. 'RELIANCE.NS' or 'AAPL'
-        days: Number of days to look back
-    Returns:
-        List of news articles with FinBERT sentiment scores
+    Fetch news articles from Finnhub.
     """
+    if not FINNHUB_API_KEY or FINNHUB_API_KEY == 'YOUR_FINNHUB_KEY_HERE':
+        return []
+
     try:
-        # ── Company name map (used as search query) ───────────────────────────
-        # Indian NSE stocks (strip .NS suffix for lookup)
-        company_map = {
-            # ── Indian Nifty 50 ──────────────────────────────────────────────
-            'RELIANCE':    'Reliance Industries',
-            'TCS':         'Tata Consultancy Services TCS',
-            'HDFCBANK':    'HDFC Bank',
-            'INFY':        'Infosys',
-            'ICICIBANK':   'ICICI Bank',
-            'HINDUNILVR':  'Hindustan Unilever HUL',
-            'SBIN':        'State Bank of India SBI',
-            'BAJFINANCE':  'Bajaj Finance',
-            'BHARTIARTL':  'Bharti Airtel',
-            'KOTAKBANK':   'Kotak Mahindra Bank',
-            'WIPRO':       'Wipro',
-            'HCLTECH':     'HCL Technologies',
-            'ASIANPAINT':  'Asian Paints',
-            'AXISBANK':    'Axis Bank',
-            'MARUTI':      'Maruti Suzuki',
-            'SUNPHARMA':   'Sun Pharmaceutical',
-            'TITAN':       'Titan Company',
-            'TATAMOTORS':  'Tata Motors',
-            'TATASTEEL':   'Tata Steel',
-            'ULTRACEMCO':  'UltraTech Cement',
-            'ADANIENT':    'Adani Enterprises',
-            'ADANIPORTS':  'Adani Ports',
-            'POWERGRID':   'Power Grid Corporation',
-            'NTPC':        'NTPC Limited',
-            'ONGC':        'ONGC Oil Natural Gas',
-            'COALINDIA':   'Coal India',
-            'GRASIM':      'Grasim Industries',
-            'TECHM':       'Tech Mahindra',
-            'LTIM':        'LTIMindtree',
-            'JSWSTEEL':    'JSW Steel',
-            # ── US Stocks ────────────────────────────────────────────────────
-            'AAPL':  'Apple',
-            'MSFT':  'Microsoft',
-            'GOOGL': 'Google Alphabet',
-            'AMZN':  'Amazon',
-            'TSLA':  'Tesla',
-            'NVDA':  'Nvidia',
-            'META':  'Meta Facebook',
-        }
-
-        # Strip exchange suffix (.NS / .BO) for map lookup
-        base_ticker = ticker.split('.')[0].upper()
-        company_name = company_map.get(base_ticker, base_ticker)
-
-        # Add "stock NSE" suffix for Indian tickers to narrow results
-        if ticker.endswith('.NS') or ticker.endswith('.BO'):
-            query = f"{company_name} stock NSE India"
-        else:
-            query = f"{company_name} stock"
-
-        # Calculate date range
+        # Use full ticker for Indian stocks (e.g. RELIANCE.NS)
         end_date   = datetime.now()
         start_date = end_date - timedelta(days=days)
 
-        # Fetch from NewsAPI
         params = {
-            'q':        query,
-            'from':     start_date.strftime('%Y-%m-%d'),
-            'to':       end_date.strftime('%Y-%m-%d'),
-            'language': 'en',
-            'sortBy':   'publishedAt',
-            'apiKey':   NEWS_API_KEY,
-            'pageSize': 20
+            'symbol': ticker,
+            'from': start_date.strftime('%Y-%m-%d'),
+            'to': end_date.strftime('%Y-%m-%d'),
+            'token': FINNHUB_API_KEY
         }
 
-        print(f"📰 Fetching news for {ticker} (query: '{query}')...")
-        response = requests.get(NEWS_API_URL, params=params, timeout=10)
+        print(f" Fetching Finnhub news for {ticker}...")
+        response = requests.get(FINNHUB_URL, params=params, timeout=10)
 
         if response.status_code != 200:
-            print(f"⚠️  NewsAPI error: {response.status_code}")
+            print(f"  Finnhub error: {response.status_code}")
             return []
 
-        articles = response.json().get('articles', [])
-        print(f"   Found {len(articles)} articles")
+        articles = response.json()
+        if not isinstance(articles, list):
+            return []
+            
+        print(f"   Found {len(articles)} articles on Finnhub")
 
-        # FinBERT-score each article
         news_with_sentiment = []
         for article in articles:
-            text = f"{article.get('title', '')} {article.get('description', '')}".strip()
-            if not text:
-                continue
+            headline = article.get('headline', '')
+            summary = article.get('summary', '')
+            text = f"{headline} {summary}".strip()
+            
+            if not text: continue
+                
             sentiment = analyze_sentiment(text)
+            pub_date = datetime.fromtimestamp(article.get('datetime', 0))
+            
             news_with_sentiment.append({
-                'title':       article.get('title'),
-                'description': article.get('description'),
-                'content':     article.get('content'),
-                'source':      article.get('source', {}).get('name'),
-                'publishedAt': article.get('publishedAt'),
+                'title':       headline,
+                'description': summary,
+                'content':     summary,
+                'source':      article.get('source', 'Finnhub'),
+                'publishedAt': pub_date.strftime('%Y-%m-%d %H:%M:%S'),
                 'url':         article.get('url'),
                 'sentiment':   sentiment,
             })
-
-        print(f"   ✅ Scored {len(news_with_sentiment)} articles with FinBERT")
         return news_with_sentiment
-
     except Exception as e:
-        print(f"❌ News fetch failed for {ticker}: {e}")
+        print(f" Finnhub fetch failed for {ticker}: {e}")
         return []
 
-
-@news_bp.route('/fetch', methods=['POST'])
-def fetch_news_endpoint():
+def fetch_news_yahoo(ticker: str) -> list:
     """
-    Endpoint to fetch and analyze news
-    POST /api/news/fetch
-    Body: {
-        "ticker": "AAPL",
-        "days": 7
-    }
+    Fetch news articles from Yahoo Finance.
     """
     try:
-        data = request.json
-        ticker = data.get('ticker')
-        days = data.get('days', 7)
+        url = f"https://query2.finance.yahoo.com/v1/finance/search?q={ticker}&newsCount=20"
+        headers = {'User-Agent': 'Mozilla/5.0'}
         
-        if not ticker:
-            return jsonify({'error': 'ticker is required'}), 400
+        print(f" Fetching Yahoo Finance news for {ticker}...")
+        response = requests.get(url, headers=headers, timeout=10)
         
-        news = fetch_news(ticker, days)
-        
-        # Calculate average sentiment
-        if news:
-            avg_sentiment = sum(article['sentiment']['score'] for article in news) / len(news)
-        else:
-            avg_sentiment = 0.0
-        
-        return jsonify({
-            'ticker': ticker,
-            'articles': news,
-            'totalArticles': len(news),
-            'averageSentiment': round(avg_sentiment, 4),
-            'dateRange': {
-                'from': (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d'),
-                'to': datetime.now().strftime('%Y-%m-%d')
-            }
-        })
-    
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@news_bp.route('/analyze', methods=['POST'])
-def analyze_text():
-    """
-    Endpoint to analyze sentiment of any text
-    POST /api/news/analyze
-    Body: {
-        "text": "Apple stock soars to new highs!"
-    }
-    """
-    try:
-        data = request.json
-        text = data.get('text')
-        
-        if not text:
-            return jsonify({'error': 'text is required'}), 400
-        
-        sentiment = analyze_sentiment(text)
-        
-        return jsonify({
-            'text': text,
-            'sentiment': sentiment
-        })
-    
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@news_bp.route('/batch-fetch', methods=['POST'])
-def batch_fetch_news():
-    """
-    Fetch news for multiple stocks
-    POST /api/news/batch-fetch
-    Body: {
-        "stocks": ["AAPL", "MSFT", "GOOGL"],
-        "days": 7
-    }
-    """
-    try:
-        data = request.json
-        stocks = data.get('stocks', [])
-        days = data.get('days', 7)
-        
-        if not stocks:
-            return jsonify({'error': 'stocks list is required'}), 400
-        
-        results = {}
-        for ticker in stocks:
-            news = fetch_news(ticker, days)
+        if response.status_code != 200:
+            return []
             
-            if news:
-                avg_sentiment = sum(article['sentiment']['score'] for article in news) / len(news)
-            else:
-                avg_sentiment = 0.0
+        data = response.json()
+        news_items = data.get('news', [])
+        print(f"   Found {len(news_items)} articles on Yahoo Finance")
+
+        news_with_sentiment = []
+        for item in news_items:
+            title = item.get('title', '')
+            if not title: continue
             
-            results[ticker] = {
-                'articles': news,
-                'totalArticles': len(news),
-                'averageSentiment': round(avg_sentiment, 4)
-            }
-        
-        return jsonify({
-            'stocks': results,
-            'dateRange': {
-                'from': (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d'),
-                'to': datetime.now().strftime('%Y-%m-%d')
-            }
-        })
-    
+            sentiment = analyze_sentiment(title)
+            print(f"      - '{title[:50]}...' | Score: {sentiment['score']:+.4f}")
+            
+            ts = item.get('providerPublishTime', 0)
+            pub_date = datetime.fromtimestamp(ts) if ts > 0 else datetime.now()
+            
+            news_with_sentiment.append({
+                'title':       title,
+                'description': item.get('publisher', ''),
+                'content':     title,
+                'source':      item.get('publisher', 'Yahoo Finance'),
+                'publishedAt': pub_date.strftime('%Y-%m-%d %H:%M:%S'),
+                'url':         item.get('link'),
+                'sentiment':   sentiment,
+            })
+        return news_with_sentiment
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        print(f" Yahoo news fetch failed: {e}")
+        return []
+
+def fetch_news_google(ticker: str) -> list:
+    """
+    Fetch news articles from Google News RSS.
+    """
+    try:
+        import xml.etree.ElementTree as ET
+        search_query = f"{ticker.split('.')[0]} stock news"
+        url = f"https://news.google.com/rss/search?q={search_query}&hl=en-IN&gl=IN&ceid=IN:en"
+        
+        print(f" Fetching Google News for {ticker}...")
+        response = requests.get(url, timeout=10)
+        if response.status_code != 200: return []
+            
+        root = ET.fromstring(response.content)
+        news_with_sentiment = []
+        
+        for item in root.findall('.//item')[:15]:
+            title = item.find('title').text
+            pub_date_str = item.find('pubDate').text
+            
+            try:
+                pub_date = datetime.strptime(pub_date_str[:25], '%a, %d %b %Y %H:%M:%S')
+            except:
+                pub_date = datetime.now()
+
+            sentiment = analyze_sentiment(title)
+            
+            news_with_sentiment.append({
+                'title':       title,
+                'description': title,
+                'content':     title,
+                'source':      'Google News',
+                'publishedAt': pub_date.strftime('%Y-%m-%d %H:%M:%S'),
+                'url':         item.find('link').text,
+                'sentiment':   sentiment,
+            })
+        print(f"   Found {len(news_with_sentiment)} articles on Google News")
+        return news_with_sentiment
+    except Exception as e:
+        print(f" Google News fetch failed: {e}")
+        return []
+
+def fetch_news(ticker: str, days: int = 7) -> list:
+    """
+    Fetch news articles for a stock ticker.
+    Order: Google News -> Yahoo Finance -> Finnhub
+    """
+    news = fetch_news_google(ticker)
+    if news: return news
+
+    news = fetch_news_yahoo(ticker)
+    if news: return news
+    
+    news = fetch_news_finnhub(ticker, days)
+    if news: return news
+    
+    return []
+
+@news_bp.route('/sentiment', methods=['GET'])
+def get_sentiment():
+    ticker = request.args.get('ticker')
+    if not ticker:
+        return jsonify({"error": "Ticker is required"}), 400
+    
+    news = fetch_news(ticker)
+    if not news:
+        return jsonify({"ticker": ticker, "sentiment_score": 0.0, "news_count": 0})
+    
+    avg_score = np.mean([n['sentiment']['score'] for n in news])
+    return jsonify({
+        "ticker": ticker,
+        "sentiment_score": avg_score,
+        "news_count": len(news),
+        "latest_headlines": [n['title'] for n in news[:3]]
+    })
+
+@news_bp.route('/headlines', methods=['GET'])
+def get_headlines():
+    """Fetch and score headlines for all user portfolio stocks."""
+    # Try to load stocks from portfolio preferences if available
+    try:
+        from api.portfolio_preferences import _load_preferences
+        prefs = _load_preferences()
+        stocks = prefs.get('stocks', ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS"])
+    except:
+        stocks = ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS"]
+    
+    all_news = []
+    # Limit to first 3 stocks to prevent timeout/rate limits
+    for ticker in stocks[:3]:
+        try:
+            articles = fetch_news(ticker, days=3)
+            for a in articles:
+                all_news.append({
+                    "headline": a['title'],
+                    "source": a['source'],
+                    "sentiment": a['sentiment']['label'].upper(),
+                    "score": a['sentiment']['score'],
+                    "ticker": ticker,
+                    "publishedAt": a.get('publishedAt', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+                })
+        except Exception as e:
+            print(f"Error fetching news for {ticker}: {e}")
+            
+    # Sort by publishedAt descending
+    all_news.sort(key=lambda x: x.get('publishedAt', ''), reverse=True)
+    return jsonify({"headlines": all_news[:20], "total": len(all_news)})

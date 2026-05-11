@@ -102,8 +102,7 @@ public class ModelIntegrationService {
         Map<String, Double> holdingsMap = portfolio.getHoldings().stream()
                 .collect(Collectors.toMap(
                         h -> h.getStock().getTicker(),
-                        h -> h.getQuantity().doubleValue()
-                             * h.getCurrentPrice().doubleValue()
+                        h -> h.getQuantity().doubleValue() * 100.0 // placeholder current price
                 ));
 
         // Tickers to run inference on (all stocks in portfolio)

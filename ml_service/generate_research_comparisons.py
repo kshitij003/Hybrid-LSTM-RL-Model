@@ -26,16 +26,16 @@ def fetch_stock_data(ticker, start, end):
         try:
             df = yf.download(ticker, start=start, end=end, progress=False, auto_adjust=True)
             if not df.empty and len(df) > 100:
-                print(f"   ✅ {ticker} loaded ({len(df)} days)")
+                print(f"    {ticker} loaded ({len(df)} days)")
                 return df
-            print(f"   ⚠️  {ticker} data incomplete (Attempt {attempt+1}/3)")
+            print(f"     {ticker} data incomplete (Attempt {attempt+1}/3)")
         except Exception as e:
-            print(f"   ⚠️  {ticker} error: {str(e)[:50]} (Attempt {attempt+1}/3)")
+            print(f"     {ticker} error: {str(e)[:50]} (Attempt {attempt+1}/3)")
         time.sleep(1)
     return None
 
 def fetch_data():
-    print(f"📊 Fetching data for {STOCKS}...")
+    print(f" Fetching data for {STOCKS}...")
     end_date = datetime.now()
     start_date = end_date - timedelta(days=750) 
     
@@ -60,7 +60,7 @@ def get_safe_price(df, date):
 
 def simulate_sma_crossover(stock_data, trading_days):
     """Traditional SMA-20/SMA-50 crossover strategy"""
-    print("📈 Simulating Traditional SMA Crossover...")
+    print(" Simulating Traditional SMA Crossover...")
     portfolio_values = []
     cash = INITIAL_BALANCE
     holdings = {ticker: 0 for ticker in STOCKS}
@@ -102,7 +102,7 @@ def simulate_sma_crossover(stock_data, trading_days):
 
 def simulate_buy_and_hold(stock_data, trading_days):
     """Passive Buy & Hold strategy"""
-    print("📈 Simulating Passive Buy & Hold Index...")
+    print(" Simulating Passive Buy & Hold Index...")
     allocation = INITIAL_BALANCE / len(STOCKS)
     
     start_date = trading_days[0]
@@ -123,7 +123,7 @@ def simulate_buy_and_hold(stock_data, trading_days):
 
 def get_hybrid_results(stock_data, trading_days):
     """Fetch Hybrid RL results via API"""
-    print("🤖 Fetching Hybrid LSTM-RL decisions (via API)...")
+    print(" Fetching Hybrid LSTM-RL decisions (via API)...")
     portfolio_values = []
     cash = INITIAL_BALANCE
     holdings = {ticker: 0 for ticker in STOCKS}
@@ -200,7 +200,7 @@ def main():
             common_days = common_days.intersection(stock_data[ticker].index)
     
     if common_days is None or len(common_days) < SIMULATION_DAYS:
-        print("❌ Not enough common trading days.")
+        print(" Not enough common trading days.")
         return
         
     trading_days = sorted(common_days)[-SIMULATION_DAYS:]
@@ -209,7 +209,7 @@ def main():
     bh_values = simulate_buy_and_hold(stock_data, trading_days)
     sma_values = simulate_sma_crossover(stock_data, trading_days)
     
-    print("\n📊 Generating Research Comparison Plot...")
+    print("\n Generating Research Comparison Plot...")
     plt.figure(figsize=(12, 7))
     
     x = range(len(trading_days))
@@ -233,7 +233,7 @@ def main():
 
     filename = "research_comparison_plot.png"
     plt.savefig(filename, dpi=200, bbox_inches='tight')
-    print(f"✅ Success! Plot saved: {filename}")
+    print(f" Success! Plot saved: {filename}")
     plt.show()
 
 if __name__ == "__main__":

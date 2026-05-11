@@ -89,18 +89,18 @@ class FeatureEngineer:
                               and logs a warning so it is visible in training logs.
         """
         if sentiment_scores and len(sentiment_scores) == len(df):
-            logger.debug("   ✅ Using real FinBERT sentiment scores for training.")
+            logger.debug("    Using real FinBERT sentiment scores for training.")
             df["sentiment"] = sentiment_scores
         else:
             if sentiment_scores is not None:
                 logger.warning(
-                    f"   ⚠️  Sentiment score length mismatch "
+                    f"     Sentiment score length mismatch "
                     f"(got {len(sentiment_scores)}, need {len(df)}). "
                     "Falling back to simulated signal."
                 )
             else:
                 logger.warning(
-                    "   ⚠️  No real sentiment scores provided — using simulated signal. "
+                    "     No real sentiment scores provided — using simulated signal. "
                     "Pass sentiment_scores for FinBERT-backed training."
                 )
             np.random.seed(42)
@@ -139,9 +139,11 @@ class FeatureEngineer:
         from datetime import datetime, timedelta
 
         api_key = news_api_key or os.getenv("NEWS_API_KEY", "")
+        
+        # ── Fallback to GNews (No API key required) if NewsAPI is not available ──
         if not api_key or api_key in ("YOUR_API_KEY_HERE", ""):
-            logger.debug(f"   ⚠️  NEWS_API_KEY not set — will use simulated sentiment for {ticker}.")
-            return None   # ← triggers consistent simulated fallback, NOT zeros
+            logger.debug(f"     NEWS_API_KEY not set — falling back to GNews scraping for {ticker}.")
+            return self._fetch_via_gnews(ticker, df_index)
 
         try:
             COMPANY_MAP = {
@@ -176,12 +178,12 @@ class FeatureEngineer:
             )
 
             if resp.status_code != 200:
-                logger.warning(f"   ⚠️  NewsAPI {resp.status_code} for {ticker} — using simulated sentiment.")
+                logger.warning(f"     NewsAPI {resp.status_code} for {ticker} — using simulated sentiment.")
                 return None   # ← NOT zeros
 
             articles = resp.json().get('articles', [])
             if not articles:
-                print(f"   ⚠️  No news articles for {ticker} — using simulated sentiment.")
+                print(f"     No news articles for {ticker} — using simulated sentiment.")
                 return None   # ← NOT zeros
 
             # Score headlines with FinBERT
@@ -195,7 +197,7 @@ class FeatureEngineer:
                     date_scores.setdefault(pub, []).append(s[0])
 
             if not date_scores:
-                print(f"   ⚠️  FinBERT scored 0 articles for {ticker} — using simulated sentiment.")
+                print(f"     FinBERT scored 0 articles for {ticker} — using simulated sentiment.")
                 return None   # ← NOT zeros
 
             # Forward-fill across df_index.
@@ -208,14 +210,54 @@ class FeatureEngineer:
                     last_score = float(np.mean(date_scores[date_str]))
                 aligned.append(last_score)
 
-            print(f"   ✅ Real FinBERT sentiment aligned for {ticker} ({len(articles)} articles, "
+            print(f"    Real FinBERT sentiment aligned for {ticker} ({len(articles)} articles, "
                   f"{len(date_scores)} scored days).")
             return aligned
 
         except Exception as e:
-            logger.error(f"   ❌ fetch_and_score_sentiment failed for {ticker}: {e} — using simulated sentiment.")
+            logger.error(f"    fetch_and_score_sentiment failed for {ticker}: {e} — using simulated sentiment.")
             return None   # ← NOT zeros
 
+    def _fetch_via_gnews(self, ticker: str, df_index: pd.Index) -> list | None:
+        """Fallback news fetcher using gnews (scraping)"""
+        try:
+            from gnews import GNews
+            # We only need very recent news for live prediction
+            gn = GNews(max_results=20, period='7d')
+            
+            base = ticker.split('.')[0].upper()
+            suffix = ' stock India' if '.NS' in ticker or '.BO' in ticker else ' stock'
+            query = f"{base}{suffix}"
+            
+            articles = gn.get_news(query)
+            if not articles:
+                logger.warning(f"     GNews found 0 articles for {ticker}. Using simulated fallback.")
+                return None
+            
+            # Score headlines with FinBERT
+            finbert = FinBERTAnalyzer()
+            date_scores = {}
+            for art in articles:
+                pub = pd.to_datetime(art.get('published date')).strftime('%Y-%m-%d')
+                text = art.get('title', '').strip()
+                if text:
+                    s = finbert.get_sentiment_scores([text])
+                    date_scores.setdefault(pub, []).append(s[0])
+            
+            # Align with index
+            aligned, last_score = [], 0.0
+            for idx in df_index:
+                date_str = str(idx)[:10]
+                if date_str in date_scores:
+                    last_score = float(np.mean(date_scores[date_str]))
+                aligned.append(last_score)
+            
+            logger.info(f"    Fetched {len(articles)} real headlines via GNews for {ticker}.")
+            return aligned
+            
+        except Exception as e:
+            logger.error(f"    GNews fallback failed for {ticker}: {e}")
+            return None
 
     def safe_minmax(self, series: pd.Series) -> pd.Series:
         """Safe MinMaxScaler preventing division by zero."""
@@ -282,14 +324,26 @@ class FeatureEngineer:
         # Add sentiment (real FinBERT scores if provided, else simulated)
         df = self.add_sentiment_data(df, sentiment_scores=sentiment_scores)
 
-        # Numeric feature columns (exclude Volume)
-        feature_cols = [
-            col for col in df.columns
-            if df[col].dtype != "object" and col not in ["Volume"]
+        # 1. Define the 9 features the LSTM expects (Order matters!)
+        lstm_features = [
+            'Open', 'High', 'Low', 'Close', 'RSI_14', 
+            'MACD_12_26_9', 'MACDh_12_26_9', 'MACDs_12_26_9', 'sentiment'
         ]
+        
+        # Ensure all columns exist
+        for col in lstm_features:
+            if col not in df.columns: df[col] = 0.0
 
-        df_norm = self.normalize_data(df, feature_cols)
-        return df_norm[feature_cols].dropna(), feature_cols
+        # 2. Keep Raw Close for the wallet
+        df["Raw_Close"] = df["Close"].copy()
+        
+        # 3. Normalize the 9 features for the AI's eyes
+        df_norm = self.normalize_data(df, lstm_features)
+        
+        # 4. Attach Raw_Close (unnormalized) back
+        df_norm["Raw_Close"] = df["Raw_Close"]
+        
+        return df_norm[lstm_features + ["Raw_Close"]].dropna(), lstm_features
 
 
 if __name__ == "__main__":

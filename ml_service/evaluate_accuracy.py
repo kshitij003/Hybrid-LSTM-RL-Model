@@ -23,7 +23,7 @@ FLASK_URL = "http://localhost:8000"
 def test_sentiment_service():
     """Test FinBERT sentiment analysis"""
     print(f"\n{'='*70}")
-    print(f"🎭 TESTING SENTIMENT ANALYSIS")
+    print(f" TESTING SENTIMENT ANALYSIS")
     print(f"{'='*70}\n")
     
     test_cases = [
@@ -62,17 +62,17 @@ def test_sentiment_service():
                     'predicted': predicted,
                     'score': score,
                     'confidence': confidence,
-                    'correct': '✅' if is_correct else '❌'
+                    'correct': '' if is_correct else ''
                 })
                 
                 print(f"   {results[-1]['correct']} Expected: {case['expected']:8} | Got: {predicted:8} | Score: {score:+.2f} | Confidence: {confidence:.1%}")
             
         except Exception as e:
-            print(f"   ❌ Error analyzing text: {e}")
+            print(f"    Error analyzing text: {e}")
     
     accuracy = (correct / len(test_cases)) * 100
     
-    print(f"\n   📊 FinBERT Accuracy: {accuracy:.1f}% ({correct}/{len(test_cases)})")
+    print(f"\n    FinBERT Accuracy: {accuracy:.1f}% ({correct}/{len(test_cases)})")
     
     return {
         'accuracy': accuracy,
@@ -85,7 +85,7 @@ def test_sentiment_service():
 def test_inference_speed(iterations=20):
     """Test ML inference speed"""
     print(f"\n{'='*70}")
-    print(f"⚡ TESTING INFERENCE SPEED")
+    print(f" TESTING INFERENCE SPEED")
     print(f"{'='*70}\n")
     
     latencies = []
@@ -129,7 +129,7 @@ def test_inference_speed(iterations=20):
                     print(f"   Progress: {i+1}/{iterations} | Avg: {np.mean(latencies):.0f}ms")
         
         except Exception as e:
-            print(f"   ❌ Request {i+1} failed: {e}")
+            print(f"    Request {i+1} failed: {e}")
     
     if latencies:
         avg_latency = np.mean(latencies)
@@ -137,7 +137,7 @@ def test_inference_speed(iterations=20):
         p95_latency = np.percentile(latencies, 95)
         p99_latency = np.percentile(latencies, 99)
         
-        print(f"\n   ⚡ Speed Metrics:")
+        print(f"\n    Speed Metrics:")
         print(f"      Average: {avg_latency:.1f} ms")
         print(f"      P50: {p50_latency:.1f} ms")
         print(f"      P95: {p95_latency:.1f} ms")
@@ -152,14 +152,14 @@ def test_inference_speed(iterations=20):
             'total_requests': iterations
         }
     else:
-        print(f"\n   ❌ No successful requests")
+        print(f"\n    No successful requests")
         return None
 
 
 def test_model_availability():
     """Check which models are available"""
     print(f"\n{'='*70}")
-    print(f"📦 CHECKING MODEL AVAILABILITY")
+    print(f" CHECKING MODEL AVAILABILITY")
     print(f"{'='*70}\n")
     
     try:
@@ -170,24 +170,24 @@ def test_model_availability():
             
             print(f"   Found {len(models)} model(s):")
             for model in models:
-                status = "🟢 ACTIVE" if model.get('is_active') else "⚪ Inactive"
+                status = " ACTIVE" if model.get('is_active') else "⚪ Inactive"
                 print(f"      {status} {model.get('model_id')}")
                 print(f"         Created: {model.get('created_at', 'Unknown')}")
             
             return models
         else:
-            print(f"   ❌ Failed to get models: {response.status_code}")
+            print(f"    Failed to get models: {response.status_code}")
             return []
     
     except Exception as e:
-        print(f"   ❌ Error: {e}")
+        print(f"    Error: {e}")
         return []
 
 
 def test_news_fetching():
     """Test news fetching capability"""
     print(f"\n{'='*70}")
-    print(f"📰 TESTING NEWS FETCHING")
+    print(f" TESTING NEWS FETCHING")
     print(f"{'='*70}\n")
     
     test_stock = "AAPL"
@@ -204,8 +204,8 @@ def test_news_fetching():
             articles = data.get('articles', [])
             avg_sentiment = data.get('averageSentiment', 0)
             
-            print(f"   ✅ Fetched {len(articles)} articles for {test_stock}")
-            print(f"   📊 Average Sentiment: {avg_sentiment:+.3f}")
+            print(f"    Fetched {len(articles)} articles for {test_stock}")
+            print(f"    Average Sentiment: {avg_sentiment:+.3f}")
             
             if articles:
                 print(f"\n   Sample Article:")
@@ -218,18 +218,18 @@ def test_news_fetching():
                 'test_stock': test_stock
             }
         else:
-            print(f"   ❌ Failed: {response.status_code}")
+            print(f"    Failed: {response.status_code}")
             return None
     
     except Exception as e:
-        print(f"   ❌ Error: {e}")
+        print(f"    Error: {e}")
         return None
 
 
 def test_training_status():
     """Check training jobs"""
     print(f"\n{'='*70}")
-    print(f"🤖 CHECKING TRAINING STATUS")
+    print(f" CHECKING TRAINING STATUS")
     print(f"{'='*70}\n")
     
     try:
@@ -242,10 +242,10 @@ def test_training_status():
                 print(f"   Found {len(jobs)} training job(s):")
                 for job in jobs[:5]:  # Show last 5
                     status_icon = {
-                        'COMPLETED': '✅',
-                        'FAILED': '❌',
-                        'IN_PROGRESS': '🔄',
-                        'QUEUED': '⏳'
+                        'COMPLETED': '',
+                        'FAILED': '',
+                        'IN_PROGRESS': '',
+                        'QUEUED': ''
                     }.get(job.get('status'), '❓')
                     
                     print(f"      {status_icon} {job.get('id')} - {job.get('status')}")
@@ -256,18 +256,18 @@ def test_training_status():
             
             return jobs
         else:
-            print(f"   ❌ Failed: {response.status_code}")
+            print(f"    Failed: {response.status_code}")
             return []
     
     except Exception as e:
-        print(f"   ❌ Error: {e}")
+        print(f"    Error: {e}")
         return []
 
 
 def run_comprehensive_test():
     """Run all standalone tests"""
     print(f"\n{'='*70}")
-    print(f"🚀 ML SERVICE STANDALONE EVALUATION")
+    print(f" ML SERVICE STANDALONE EVALUATION")
     print(f"{'='*70}")
     print(f"Testing Flask ML service at: {FLASK_URL}")
     print(f"{'='*70}\n")
@@ -296,27 +296,27 @@ def run_comprehensive_test():
     
     # Generate summary
     print(f"\n{'='*70}")
-    print(f"📋 EVALUATION SUMMARY")
+    print(f" EVALUATION SUMMARY")
     print(f"{'='*70}\n")
     
     if results['sentiment']:
         acc = results['sentiment']['accuracy']
-        emoji = '✅' if acc >= 80 else '⚠️' if acc >= 60 else '❌'
+        emoji = '' if acc >= 80 else '' if acc >= 60 else ''
         print(f"{emoji} Sentiment Accuracy: {acc:.1f}%")
     
     if results['speed']:
         latency = results['speed']['avg_latency_ms']
-        emoji = '✅' if latency < 500 else '⚠️' if latency < 1000 else '❌'
+        emoji = '' if latency < 500 else '' if latency < 1000 else ''
         print(f"{emoji} Inference Latency: {latency:.0f} ms")
     
     if results['news']:
         count = results['news']['articles_fetched']
-        emoji = '✅' if count > 0 else '❌'
+        emoji = '' if count > 0 else ''
         print(f"{emoji} News Fetching: {count} articles")
     
     if results['models']:
         active = sum(1 for m in results['models'] if m.get('is_active'))
-        emoji = '✅' if active > 0 else '⚠️'
+        emoji = '' if active > 0 else ''
         print(f"{emoji} Active Models: {active}")
     
     # Save results
@@ -335,7 +335,7 @@ def run_comprehensive_test():
         }
         json.dump(json_results, f, indent=2)
     
-    print(f"\n✅ Report saved to: {filename}")
+    print(f"\n Report saved to: {filename}")
     print(f"\n{'='*70}\n")
     
     return results
